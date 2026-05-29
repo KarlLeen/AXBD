@@ -137,7 +137,7 @@ def main() -> None:
     for i, draft in enumerate(drafts, 1):
         _render_draft(i, total, draft)
         while True:
-            choice = input("[a] Approve & push  [e] Edit  [s] Skip\n> ").strip().lower()
+            choice = input("[a] Approve & push  [e] Edit  [r] Reject  [s] Skip\n> ").strip().lower()
             if choice == "a":
                 try:
                     _approve(draft, client)
@@ -154,11 +154,15 @@ def main() -> None:
                     conn.commit()
                 draft["body"] = new_body
                 _render_draft(i, total, draft)
+            elif choice == "r":
+                _reject(draft["id"])
+                print("✗ Rejected.")
+                break
             elif choice == "s":
                 print("Skipped.")
                 break
             else:
-                print("Invalid choice — enter a, e, or s.")
+                print("Invalid choice — enter a, e, r, or s.")
 
 
 if __name__ == "__main__":

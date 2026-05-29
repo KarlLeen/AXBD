@@ -5,6 +5,8 @@ from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 import httpx
 
+from athenax.tools._retry import api_retry
+
 _BASE = "https://api.connectsafely.ai/linkedin"
 
 
@@ -49,13 +51,13 @@ class LinkedInPeopleSearchTool(BaseTool):
     args_schema: type[BaseModel] = LinkedInPeopleSearchInput
 
     def _run(self, keywords: str, count: int = 10) -> str:
-        resp = httpx.post(
-            f"{_BASE}/search/people/v2",
-            headers=_headers(),
-            json={"keywords": keywords, "count": count},
-            timeout=30,
-        )
-        resp.raise_for_status()
+        @api_retry
+        def _call():
+            r = httpx.post(f"{_BASE}/search/people/v2", headers=_headers(),
+                           json={"keywords": keywords, "count": count}, timeout=30)
+            r.raise_for_status()
+            return r
+        resp = _call()
         data = resp.json()
         people = data.get("people", data.get("results", []))
 
@@ -82,13 +84,13 @@ class LinkedInCompanySearchTool(BaseTool):
     args_schema: type[BaseModel] = LinkedInCompanySearchInput
 
     def _run(self, keywords: str, count: int = 10) -> str:
-        resp = httpx.post(
-            f"{_BASE}/search/companies",
-            headers=_headers(),
-            json={"keywords": keywords, "count": count},
-            timeout=30,
-        )
-        resp.raise_for_status()
+        @api_retry
+        def _call():
+            r = httpx.post(f"{_BASE}/search/companies", headers=_headers(),
+                           json={"keywords": keywords, "count": count}, timeout=30)
+            r.raise_for_status()
+            return r
+        resp = _call()
         data = resp.json()
         companies = data.get("companies", data.get("results", []))
 
@@ -113,13 +115,13 @@ class LinkedInPostSearchTool(BaseTool):
     args_schema: type[BaseModel] = LinkedInPostSearchInput
 
     def _run(self, keywords: str, count: int = 10) -> str:
-        resp = httpx.post(
-            f"{_BASE}/posts/search",
-            headers=_headers(),
-            json={"keywords": keywords, "count": count},
-            timeout=30,
-        )
-        resp.raise_for_status()
+        @api_retry
+        def _call():
+            r = httpx.post(f"{_BASE}/posts/search", headers=_headers(),
+                           json={"keywords": keywords, "count": count}, timeout=30)
+            r.raise_for_status()
+            return r
+        resp = _call()
         data = resp.json()
         posts = data.get("posts", data.get("results", []))
 

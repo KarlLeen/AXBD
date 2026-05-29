@@ -5,6 +5,8 @@ from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 import httpx
 
+from athenax.tools._retry import api_retry
+
 
 class TwitterSearchInput(BaseModel):
     hashtags: list[str] = Field(
@@ -36,14 +38,18 @@ class TwitterTool(BaseTool):
             "expansions": "author_id",
         }
 
-        resp = httpx.get(
-            "https://api.twitter.com/2/tweets/search/recent",
-            headers={"Authorization": f"Bearer {bearer}"},
-            params=params,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        @api_retry
+        def _call():
+            r = httpx.get(
+                "https://api.twitter.com/2/tweets/search/recent",
+                headers={"Authorization": f"Bearer {bearer}"},
+                params=params,
+                timeout=15,
+            )
+            r.raise_for_status()
+            return r.json()
+
+        data = _call()
 
         users_by_id = {
             u["id"]: u for u in data.get("includes", {}).get("users", [])

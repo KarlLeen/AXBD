@@ -41,38 +41,75 @@ def _extract_json(text: str) -> list:
 
 
 def _save_leads(leads: list) -> dict[str, str]:
-    """Insert lead rows; return {name → id} map."""
+    """Upsert lead rows (dedup by URL); return {name → id} map."""
     id_map: dict[str, str] = {}
+    now = _now()
     with get_connection() as conn:
         for lead in leads:
-            lead_id = str(uuid.uuid4())
+            url = lead.get("url", "")
             tech = lead.get("tech_stack")
-            conn.execute(
-                """INSERT OR IGNORE INTO leads
-                   (id, source, name, url, description,
-                    github_stars, github_forks, github_contributors, tech_stack,
-                    linkedin_profile, linkedin_recent_post,
-                    twitter_handle, twitter_followers, twitter_recent_tweet,
-                    created_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (
-                    lead_id,
-                    lead.get("source", "unknown"),
-                    lead.get("name", ""),
-                    lead.get("url", ""),
-                    lead.get("description", ""),
-                    lead.get("github_stars"),
-                    lead.get("github_forks"),
-                    lead.get("github_contributors"),
-                    json.dumps(tech) if isinstance(tech, list) else tech,
-                    lead.get("linkedin_profile"),
-                    lead.get("linkedin_recent_post"),
-                    lead.get("twitter_handle"),
-                    lead.get("twitter_followers"),
-                    lead.get("twitter_recent_tweet"),
-                    _now(),
-                ),
-            )
+            tech_json = json.dumps(tech) if isinstance(tech, list) else tech
+
+            existing = conn.execute(
+                "SELECT id FROM leads WHERE url = ?", (url,)
+            ).fetchone()
+
+            if existing:
+                # URL already in DB — update numeric fields only
+                lead_id = existing[0]
+                conn.execute(
+                    """UPDATE leads SET
+                        github_stars       = COALESCE(?, github_stars),
+                        github_forks       = COALESCE(?, github_forks),
+                        commits_last_30d   = COALESCE(?, commits_last_30d),
+                        twitter_followers  = COALESCE(?, twitter_followers),
+                        twitter_recent_tweet = COALESCE(?, twitter_recent_tweet),
+                        linkedin_recent_post = COALESCE(?, linkedin_recent_post),
+                        updated_at         = ?
+                    WHERE id = ?""",
+                    (
+                        lead.get("github_stars"),
+                        lead.get("github_forks"),
+                        lead.get("commits_last_30d"),
+                        lead.get("twitter_followers"),
+                        lead.get("twitter_recent_tweet"),
+                        lead.get("linkedin_recent_post"),
+                        now,
+                        lead_id,
+                    ),
+                )
+            else:
+                # New URL — insert fresh row
+                lead_id = str(uuid.uuid4())
+                conn.execute(
+                    """INSERT INTO leads
+                       (id, source, name, url, description,
+                        github_stars, github_forks, github_contributors,
+                        commits_last_30d, tech_stack,
+                        linkedin_profile, linkedin_recent_post,
+                        twitter_handle, twitter_followers, twitter_recent_tweet,
+                        created_at, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        lead_id,
+                        lead.get("source", "unknown"),
+                        lead.get("name", ""),
+                        url,
+                        lead.get("description", ""),
+                        lead.get("github_stars"),
+                        lead.get("github_forks"),
+                        lead.get("github_contributors"),
+                        lead.get("commits_last_30d"),
+                        tech_json,
+                        lead.get("linkedin_profile"),
+                        lead.get("linkedin_recent_post"),
+                        lead.get("twitter_handle"),
+                        lead.get("twitter_followers"),
+                        lead.get("twitter_recent_tweet"),
+                        now,
+                        now,
+                    ),
+                )
             id_map[lead.get("name", "")] = lead_id
         conn.commit()
     return id_map

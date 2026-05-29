@@ -5,6 +5,8 @@ from crewai.tools import BaseTool
 from pydantic import BaseModel, Field
 import httpx
 
+from athenax.tools._retry import api_retry
+
 
 class SerperSearchInput(BaseModel):
     query: str = Field(description="Search query (e.g. 'DAO tooling startup YCombinator 2024')")
@@ -25,17 +27,18 @@ class SerperTool(BaseTool):
         if not api_key:
             raise ValueError("SERPER_API_KEY not set")
 
-        resp = httpx.post(
-            "https://google.serper.dev/search",
-            headers={
-                "X-API-KEY": api_key,
-                "Content-Type": "application/json",
-            },
-            json={"q": query, "num": num},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        @api_retry
+        def _call():
+            r = httpx.post(
+                "https://google.serper.dev/search",
+                headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+                json={"q": query, "num": num},
+                timeout=15,
+            )
+            r.raise_for_status()
+            return r.json()
+
+        data = _call()
 
         results = []
         for item in data.get("organic", []):

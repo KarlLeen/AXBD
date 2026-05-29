@@ -14,6 +14,7 @@ from athenax.tools.linkedin_tool import (
 )
 from athenax.tools.twitter_tool import TwitterTool
 from athenax.tools.serper_tool import SerperTool
+from athenax.tools.coingecko_tool import CoinGeckoTool
 
 MODEL = "openrouter/deepseek/deepseek-v4-pro"
 
@@ -109,7 +110,7 @@ def build_crew() -> Crew:
             SerperTool(),
         ],
     )
-    evaluator = build_evaluator(llm=llm, tools=[])
+    evaluator = build_evaluator(llm=llm, tools=[CoinGeckoTool()])
     writer = build_writer(llm=llm, tools=[])
 
     # ── Task 1: Scout ────────────────────────────────────────────────────────
@@ -137,9 +138,22 @@ SEARCH STRATEGY:
 
 3. Twitter/X — hashtags: #AI #Web3 #DePIN #RWA #BuildInPublic #ZKProof #Robotics #Biotech
 
-4. Web search (Serper) — YC batch announcements, a16z portfolio updates,
-   Paradigm/Multicoin/Polychain investments, ETHGlobal hackathon winners,
-   NeurIPS demo days, recent seed/Series A announcements in these sectors.
+4. Web search (Serper) — run ALL of the following targeted queries:
+
+   VC PORTFOLIO MONITORING (run each separately):
+   • "a16z new investment announcement 2026 crypto AI"
+   • "Paradigm portfolio company 2026"
+   • "Polychain new investment 2026"
+   • "Multicoin Capital portfolio 2026"
+   • "YC W26 batch companies list"
+   • "Sequoia crypto AI investment 2026"
+
+   CONFERENCE & HACKATHON WINNERS:
+   • "ETHGlobal hackathon winner 2026"
+   • "ETHDenver 2026 winner project"
+   • "NeurIPS 2025 demo day startup"
+   • "YC Demo Day W26 AI startup"
+   • "Token2049 2026 featured project"
 
 FOR EACH LEAD COLLECT:
 • Basic: name, URL, source, description, sector (your best guess)
@@ -148,17 +162,20 @@ FOR EACH LEAD COLLECT:
 • LinkedIn: profile URL, recent post (if available)
 • Signals: any VC/accelerator mentions, funding news, launch dates
 • Velocity clue: any evidence of rapid recent growth (e.g. "just launched", "trending", recent funding)
+• commits_last_30d: the GitHub tool returns this automatically — include it in the output
 
 Return a single JSON array.
 """,
         expected_output=(
             "A JSON array of 15–20 lead objects, each with: "
             "source, name, url, description, sector, "
-            "github_stars, github_forks, tech_stack (array or null), "
+            "github_stars, github_forks, commits_last_30d (int or null), "
+            "tech_stack (array or null), "
             "linkedin_profile, linkedin_recent_post, "
             "twitter_handle, twitter_followers, twitter_recent_tweet, "
             "vc_backing (string or null), funding_stage (string or null), "
-            "velocity_notes (string or null — any evidence of rapid recent growth)."
+            "velocity_notes (string or null — any evidence of rapid recent growth), "
+            "conference_origin (string or null — e.g. 'ETHGlobal winner', 'YC W26')."
         ),
         agent=scout,
     )
@@ -184,7 +201,11 @@ For NEW projects:
 Base score starts at 40 if all minimum requirements are met.
 Add signal booster points as listed above.
 Apply velocity multiplier: if growth rate is exceptional, multiply total by up to 1.3×.
+For GitHub repos: use commits_last_30d as velocity signal (>50 commits/month = strong).
 Cap at 100.
+
+For ESTABLISHED crypto projects: use the coingecko_search tool to verify they are
+actually listed. A Tier 1 project must have a CoinGecko market_cap_rank ≤ 50.
 
 For ESTABLISHED projects:
 {ESTABLISHED_PROJECT_CRITERIA}
