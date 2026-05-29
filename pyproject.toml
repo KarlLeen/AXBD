@@ -12,12 +12,14 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "pydantic>=2.9.0",
     "schedule>=1.2.0",
+    "python-telegram-bot[job-queue]>=21.0",
 ]
 
 [project.scripts]
 athenax = "athenax.main:main"
 athenax-mock = "mock_server.app:run"
 athenax-review = "athenax.cli.review:main"
+athenax-bot = "telegram_bot.bot:run_bot"
 
 [build-system]
 requires = ["hatchling"]

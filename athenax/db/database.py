@@ -70,9 +70,13 @@ def init_db() -> None:
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(leads)").fetchall()}
-    if "remote_lead_id" not in existing:
+    lead_cols = {row[1] for row in conn.execute("PRAGMA table_info(leads)").fetchall()}
+    if "remote_lead_id" not in lead_cols:
         conn.execute("ALTER TABLE leads ADD COLUMN remote_lead_id TEXT")
+
+    od_cols = {row[1] for row in conn.execute("PRAGMA table_info(outreach_drafts)").fetchall()}
+    if "remote_outreach_id" not in od_cols:
+        conn.execute("ALTER TABLE outreach_drafts ADD COLUMN remote_outreach_id TEXT")
 
 
 if __name__ == "__main__":

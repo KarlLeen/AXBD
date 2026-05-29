@@ -152,6 +152,87 @@ def _save_drafts(drafts: list, lead_id_map: dict[str, str], eval_id_map: dict[st
         conn.commit()
 
 
+def _push_pipeline_results(lead_id_map: dict, eval_id_map: dict) -> None:
+    """Push all leads + pending drafts to AthenaX API right after pipeline finishes."""
+    from athenax.api.athenax_client import AthenaXClient
+    client = AthenaXClient()
+
+    # Build a lookup: local_lead_id → eval row (for score / traits)
+    with get_connection() as conn:
+        eval_rows = {
+            row["lead_id"]: dict(row)
+            for row in conn.execute("SELECT * FROM evaluations").fetchall()
+        }
+        draft_rows = conn.execute(
+            "SELECT * FROM outreach_drafts WHERE remote_outreach_id IS NULL"
+        ).fetchall()
+
+    pushed_leads: dict[str, str] = {}   # local_lead_id → remote_lead_id
+    pushed_drafts = 0
+
+    for local_lead_id, eval_row in eval_rows.items():
+        # Get lead data
+        with get_connection() as conn:
+            lead = dict(conn.execute(
+                "SELECT * FROM leads WHERE id=?", (local_lead_id,)
+            ).fetchone())
+
+        # Skip if already pushed
+        if lead.get("remote_lead_id"):
+            pushed_leads[local_lead_id] = lead["remote_lead_id"]
+            continue
+
+        try:
+            remote_lead_id = client.push_lead({
+                "name": lead["name"],
+                "url": lead["url"],
+                "source": lead["source"],
+                "tech_stack": lead.get("tech_stack"),
+                "compatibility_score": eval_row["compatibility_score"],
+                "reason_for_partnership": eval_row["reason_for_partnership"],
+                "nounish_traits": eval_row.get("nounish_traits"),
+            })
+            with get_connection() as conn:
+                conn.execute(
+                    "UPDATE leads SET remote_lead_id=? WHERE id=?",
+                    (remote_lead_id, local_lead_id),
+                )
+                conn.commit()
+            pushed_leads[local_lead_id] = remote_lead_id
+        except Exception as exc:
+            print(f"  [WARN] push_lead failed for '{lead['name']}': {exc}")
+
+    for row in draft_rows:
+        draft = dict(row)
+        local_lead_id = draft["lead_id"]
+        remote_lead_id = pushed_leads.get(local_lead_id)
+        if not remote_lead_id:
+            continue
+        eval_row = eval_rows.get(local_lead_id, {})
+        try:
+            remote_outreach_id = client.push_draft(
+                {
+                    "channel": draft["channel"],
+                    "subject": draft.get("subject"),
+                    "body": draft["body"],
+                    "lead_name": draft.get("lead_name", ""),
+                    "compatibility_score": eval_row.get("compatibility_score"),
+                },
+                remote_lead_id,
+            )
+            with get_connection() as conn:
+                conn.execute(
+                    "UPDATE outreach_drafts SET remote_outreach_id=? WHERE id=?",
+                    (remote_outreach_id, draft["id"]),
+                )
+                conn.commit()
+            pushed_drafts += 1
+        except Exception as exc:
+            print(f"  [WARN] push_draft failed for draft {draft['id'][:8]}…: {exc}")
+
+    print(f"    Pushed {len(pushed_leads)} leads + {pushed_drafts} pending drafts to AthenaX API")
+
+
 def run_pipeline() -> None:
     init_db()
     print("\n🚀  Starting AthenaX Partnership Agent pipeline...\n")
@@ -159,12 +240,10 @@ def run_pipeline() -> None:
     crew = build_crew()
     result = crew.kickoff()
 
-    # crew.kickoff() returns a CrewOutput; tasks_output holds each task's raw output
     tasks_output = getattr(result, "tasks_output", [])
-
-    raw_leads_text    = tasks_output[0].raw if len(tasks_output) > 0 else ""
-    raw_evals_text    = tasks_output[1].raw if len(tasks_output) > 1 else ""
-    raw_drafts_text   = tasks_output[2].raw if len(tasks_output) > 2 else ""
+    raw_leads_text  = tasks_output[0].raw if len(tasks_output) > 0 else ""
+    raw_evals_text  = tasks_output[1].raw if len(tasks_output) > 1 else ""
+    raw_drafts_text = tasks_output[2].raw if len(tasks_output) > 2 else ""
 
     leads  = _extract_json(raw_leads_text)
     evals  = _extract_json(raw_evals_text)
@@ -178,8 +257,9 @@ def run_pipeline() -> None:
     eval_id_map = _save_evaluations(evals, lead_id_map)
     _save_drafts(drafts, lead_id_map, eval_id_map)
 
-    print("\n✅  All results saved to athenax.db")
-    print("    Run `athenax review` to approve outreach drafts.\n")
+    print("\n✅  Saved to athenax.db — pushing to AthenaX API...")
+    _push_pipeline_results(lead_id_map, eval_id_map)
+    print("    Run `athenax review` (CLI) or `athenax bot` (Telegram) to review drafts.\n")
 
 
 def main() -> None:
@@ -190,6 +270,7 @@ def main() -> None:
 
     sub.add_parser("run", help="Run the pipeline once now")
     sub.add_parser("review", help="Open the CLI review loop")
+    sub.add_parser("bot", help="Start the Telegram admin bot")
 
     cron_p = sub.add_parser("schedule", help="Run on a weekly cron (blocks)")
     cron_p.add_argument("--day", default="monday")
@@ -202,6 +283,9 @@ def main() -> None:
     elif args.command == "review":
         from athenax.cli.review import main as review_main
         review_main()
+    elif args.command == "bot":
+        from telegram_bot.bot import run_bot
+        run_bot()
     elif args.command == "schedule":
         import schedule as sched
         import time
