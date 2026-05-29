@@ -19,6 +19,7 @@ def _fetch_pending() -> list[dict]:
                 od.channel         AS channel,
                 od.subject         AS subject,
                 od.body            AS body,
+                od.status          AS status,
                 l.name             AS lead_name,
                 l.url              AS lead_url,
                 l.source           AS lead_source,
