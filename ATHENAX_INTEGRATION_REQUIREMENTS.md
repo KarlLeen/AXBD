@@ -1,8 +1,5 @@
 # AthenaX Partnership Agent — Integration Requirements
 
-**To:** AthenaX Engineering  
-**From:** Partnership Agent Team  
-**Re:** Backend API requirements for the AI Partnership Agent
 
 ---
 
@@ -169,7 +166,7 @@ That's it. We update our `.env` file and the agent points at production immediat
 
 ---
 
-## 4. Telegram Bot Flow (for your reference)
+## 4. Telegram Bot Flow 
 
 The Telegram admin bot runs alongside the agent and does the following:
 
