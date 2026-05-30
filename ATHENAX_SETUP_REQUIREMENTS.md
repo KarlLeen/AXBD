@@ -15,14 +15,14 @@ The AthenaX Partnership Agent is an AI system that runs weekly to automatically 
 
 The agent pulls data from five external platforms. AthenaX needs accounts and API keys for each.
 
-| Service | Purpose | Cost | Where to sign up |
+| Service | Purpose|
 |---|---|---|---|
-| **GitHub** | Scan trending repos for Web3/DAO projects | Free (5,000 req/hr with token) | github.com/settings/tokens |
-| **ConnectSafely.ai** | LinkedIn people, company & post search (compliant) | ~$10/month | connectsafely.ai |
-| **Twitter / X API** | Monitor Web3 hashtags and builder activity | Free Basic tier is sufficient | developer.twitter.com |
-| **OpenRouter** | LLM backbone (currently using DeepSeek V4 Pro) | Pay-per-use, ~$1–5 per weekly run | openrouter.ai |
-| **Serper** | Google Search for YC batches, VC announcements, conference winners | ~$1 per 1,000 searches | serper.dev |
-| **CoinGecko** | Verify crypto project listing status | Free demo tier available | coingecko.com/en/api |
+| **GitHub** | Scan trending repos for Web3/DAO projects | 
+| **ConnectSafely.ai** | LinkedIn people, company & post search (compliant) |
+| **Twitter / X API** | Monitor Web3 hashtags and builder activity | 
+| **OpenRouter** | LLM backbone (currently using DeepSeek V4 Pro) |
+| **Serper** | Google Search for YC batches, VC announcements, conference winners |
+| **CoinGecko** | Verify crypto project listing status | 
 
 Once accounts are created, the credentials go into a `.env` file on whatever server runs the agent.
 
@@ -110,12 +110,6 @@ To enable it, AthenaX needs to:
 ## 5. Summary Checklist
 
 ### AthenaX must provide:
-- [ ] GitHub personal access token
-- [ ] ConnectSafely.ai account + API key
-- [ ] Twitter/X Developer account + Bearer token + API key/secret
-- [ ] OpenRouter API key (billing enabled)
-- [ ] Serper API key
-- [ ] CoinGecko API key
 - [ ] `ATHENAX_API_URL` + `ATHENAX_API_KEY` (once their internal API is built)
 
 ### AthenaX engineering must build:
