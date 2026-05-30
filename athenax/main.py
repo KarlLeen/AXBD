@@ -307,6 +307,7 @@ def main() -> None:
 
     sub.add_parser("run", help="Run the pipeline once now")
     sub.add_parser("review", help="Open the CLI review loop")
+    sub.add_parser("dashboard", help="Open the web admin dashboard")
     sub.add_parser("bot", help="Start the Telegram admin bot")
 
     cron_p = sub.add_parser("schedule", help="Run on a weekly cron (blocks)")
@@ -320,6 +321,9 @@ def main() -> None:
     elif args.command == "review":
         from athenax.cli.review import main as review_main
         review_main()
+    elif args.command == "dashboard":
+        from dashboard.app import run as run_dashboard
+        run_dashboard()
     elif args.command == "bot":
         from telegram_bot.bot import run_bot
         run_bot()

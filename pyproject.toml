@@ -20,6 +20,7 @@ athenax = "athenax.main:main"
 athenax-mock = "mock_server.app:run"
 athenax-review = "athenax.cli.review:main"
 athenax-bot = "telegram_bot.bot:run_bot"
+athenax-dashboard = "dashboard.app:run"
 
 [build-system]
 requires = ["hatchling"]
