@@ -190,11 +190,20 @@ def _save_drafts(drafts: list, lead_id_map: dict[str, str], eval_id_map: dict[st
 
 
 def _push_pipeline_results(lead_id_map: dict, eval_id_map: dict) -> None:
-    """Push all leads + pending drafts to AthenaX API right after pipeline finishes."""
+    """
+    Push all evaluated leads to AthenaX as Draft products.
+    Maps to AthenaX products schema: POST /api/v1/products + sub-resources.
+    """
     from athenax.api.athenax_client import AthenaXClient
     client = AthenaXClient()
 
-    # Build a lookup: local_lead_id → eval row (for score / traits)
+    # Fetch categories once and reuse for all products
+    try:
+        categories = client.get_categories()
+    except Exception:
+        categories = []
+        print("  [WARN] Could not fetch categories — products will be created without category")
+
     with get_connection() as conn:
         eval_rows = {
             row["lead_id"]: dict(row)
@@ -204,11 +213,10 @@ def _push_pipeline_results(lead_id_map: dict, eval_id_map: dict) -> None:
             "SELECT * FROM outreach_drafts WHERE remote_outreach_id IS NULL"
         ).fetchall()
 
-    pushed_leads: dict[str, str] = {}   # local_lead_id → remote_lead_id
+    pushed_products: dict[str, str] = {}   # local_lead_id → remote_product_id
     pushed_drafts = 0
 
     for local_lead_id, eval_row in eval_rows.items():
-        # Get lead data
         with get_connection() as conn:
             lead = dict(conn.execute(
                 "SELECT * FROM leads WHERE id=?", (local_lead_id,)
@@ -216,58 +224,56 @@ def _push_pipeline_results(lead_id_map: dict, eval_id_map: dict) -> None:
 
         # Skip if already pushed
         if lead.get("remote_lead_id"):
-            pushed_leads[local_lead_id] = lead["remote_lead_id"]
+            pushed_products[local_lead_id] = lead["remote_lead_id"]
             continue
 
+        # Match sector → category
+        category_id = client.match_category(lead.get("sector", ""), categories)
+
         try:
-            remote_lead_id = client.push_lead({
-                "name": lead["name"],
-                "url": lead["url"],
-                "source": lead["source"],
-                "tech_stack": lead.get("tech_stack"),
-                "compatibility_score": eval_row["compatibility_score"],
-                "reason_for_partnership": eval_row["reason_for_partnership"],
-                "nounish_traits": eval_row.get("nounish_traits"),
-            })
+            # 1. Create Draft product
+            product_id = client.push_product(lead, eval_row, category_id)
+
+            # 2. Add links (website/github/twitter)
+            client.push_product_links(product_id, lead)
+
+            # 3. Add VC backers if known
+            client.push_product_backers(product_id, lead)
+
             with get_connection() as conn:
                 conn.execute(
                     "UPDATE leads SET remote_lead_id=? WHERE id=?",
-                    (remote_lead_id, local_lead_id),
+                    (product_id, local_lead_id),
                 )
                 conn.commit()
-            pushed_leads[local_lead_id] = remote_lead_id
-        except Exception as exc:
-            print(f"  [WARN] push_lead failed for '{lead['name']}': {exc}")
+            pushed_products[local_lead_id] = product_id
+            print(f"  ✓ Product created: {lead['name']} → id={product_id[:8]}…")
 
+        except Exception as exc:
+            print(f"  [WARN] push_product failed for '{lead['name']}': {exc}")
+
+    # Push outreach drafts as product comments (internal review note)
     for row in draft_rows:
         draft = dict(row)
         local_lead_id = draft["lead_id"]
-        remote_lead_id = pushed_leads.get(local_lead_id)
-        if not remote_lead_id:
+        product_id = pushed_products.get(local_lead_id)
+        if not product_id:
             continue
         eval_row = eval_rows.get(local_lead_id, {})
         try:
-            remote_outreach_id = client.push_draft(
-                {
-                    "channel": draft["channel"],
-                    "subject": draft.get("subject"),
-                    "body": draft["body"],
-                    "lead_name": draft.get("lead_name", ""),
-                    "compatibility_score": eval_row.get("compatibility_score"),
-                },
-                remote_lead_id,
-            )
+            client.push_outreach_draft(product_id, draft, eval_row)
+            # Use product_id as remote_outreach_id (comment lives on the product)
             with get_connection() as conn:
                 conn.execute(
                     "UPDATE outreach_drafts SET remote_outreach_id=? WHERE id=?",
-                    (remote_outreach_id, draft["id"]),
+                    (product_id, draft["id"]),
                 )
                 conn.commit()
             pushed_drafts += 1
         except Exception as exc:
-            print(f"  [WARN] push_draft failed for draft {draft['id'][:8]}…: {exc}")
+            print(f"  [WARN] push_outreach_draft failed for draft {draft['id'][:8]}…: {exc}")
 
-    print(f"    Pushed {len(pushed_leads)} leads + {pushed_drafts} pending drafts to AthenaX API")
+    print(f"    Pushed {len(pushed_products)} products + {pushed_drafts} outreach drafts to AthenaX")
 
 
 def run_pipeline() -> None:
