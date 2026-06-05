@@ -292,7 +292,27 @@ def run_pipeline() -> None:
     evals  = _extract_json(raw_evals_text)
     drafts = _extract_json(raw_drafts_text)
 
-    print(f"\n📦  Scout found    : {len(leads)} leads")
+    # Filter out Nouns DAO's own / affiliated projects
+    from athenax.filters import filter_leads, is_excluded
+    leads, excluded = filter_leads(leads)
+    if excluded:
+        print(f"\n🚫  Excluded {len(excluded)} Nouns-affiliated lead(s):")
+        for e in excluded:
+            print(f"     - {e.get('name','?')} — {e['_exclusion_reason']}")
+
+    # Drop evals/drafts whose lead was excluded (match by name)
+    excluded_names = {(e.get("name") or "").lower() for e in excluded}
+    def _is_excluded_name(item_name: str) -> bool:
+        n = (item_name or "").lower()
+        if n in excluded_names:
+            return True
+        # also re-check the name against keyword rules directly
+        return is_excluded({"name": item_name})[0]
+
+    evals  = [e for e in evals  if not _is_excluded_name(e.get("lead_name", ""))]
+    drafts = [d for d in drafts if not _is_excluded_name(d.get("lead_name", ""))]
+
+    print(f"\n📦  Scout found    : {len(leads)} leads (after exclusions)")
     print(f"📊  Evaluator kept : {len(evals)} top leads")
     print(f"✉️   Writer drafted : {len(drafts)} messages")
 

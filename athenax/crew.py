@@ -16,7 +16,7 @@ from athenax.tools.twitter_tool import TwitterTool
 from athenax.tools.serper_tool import SerperTool
 from athenax.tools.coingecko_tool import CoinGeckoTool
 
-MODEL = "openrouter/deepseek/deepseek-v4-pro"
+MODEL = "deepseek/deepseek-chat"   # DeepSeek-V3 via official API
 
 # ── AthenaX Selection Criteria (embedded for agent context) ──────────────────
 
@@ -37,6 +37,15 @@ IMMEDIATE REJECTION — any one of these disqualifies a lead entirely:
 • Token-only project with no underlying product or protocol utility
 • Inactive for 3+ months (no commits, no posts, no updates)
 • Already widely known household name → move to established (30%) bucket instead
+• NOUNS DAO'S OWN / AFFILIATED PROJECT — we do NOT pitch Nouns to itself.
+  Reject anything that is: a Nouns sub-DAO, Nouns-funded, "by Nouns DAO",
+  a Nouns proliferation pod, or whose primary identity is Nounish
+  (e.g. Prop House, Lil Nouns, Gnars, Nouns Esports, Nouns Deli, etc.).
+• SHUT DOWN / DISCONTINUED — the project must STILL BE OPERATING TODAY.
+  Reject if it has wound down, sunset, archived its repo, announced shutdown,
+  or shows no activity in the last 3 months. Example: Prop House ceased
+  operations — it must be rejected even though it was once prominent.
+  Verify recent activity (commits_last_30d, recent tweets/posts) before scoring.
 """
 
 NEW_PROJECT_CRITERIA = """
@@ -89,8 +98,8 @@ PIPELINE_MIX = "Target mix: 70% new/early-stage + 30% established projects acros
 def build_llm() -> LLM:
     return LLM(
         model=MODEL,
-        api_key=os.environ["OPENROUTER_API_KEY"],
-        base_url="https://openrouter.ai/api/v1",
+        api_key=os.environ["DEEPSEEK_API_KEY"],
+        base_url="https://api.deepseek.com/v1",
         temperature=0.3,
     )
 
