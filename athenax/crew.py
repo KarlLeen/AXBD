@@ -214,15 +214,27 @@ SEARCH STRATEGY:
    Dev Tools:
    • "KubeCon GitHub Universe DevRelCon 2026 startup after:2025-06-01"
 
-FOR EACH LEAD COLLECT:
-• Basic: name, URL, source, description, sector (your best guess)
-• GitHub: stars, forks, last commit date, contributor count (if available)
-• Twitter: handle, follower count, recent tweet (if available)
-• LinkedIn: profile URL, recent post (if available)
+FOR EACH LEAD — MANDATORY CROSS-PLATFORM ENRICHMENT:
+After finding a lead on ANY source (GitHub, Twitter, LinkedIn, or web), you MUST search
+for that project on ALL other platforms before moving on. Do not skip this step.
+
+For every lead:
+① GitHub  — search the project name to find its repo. Extract: stars, forks,
+             commits_last_30d, commits_last_90d, archived, tech_stack, homepage.
+             If repo not found, record null for these fields.
+② Twitter/X — search the project/company name to find their handle. Extract:
+              twitter_handle, follower count, most recent tweet text.
+              If not found, record null.
+③ LinkedIn  — search the company name on LinkedIn. Extract:
+              linkedin_profile URL, most recent post or announcement.
+              If not found, record null.
+④ Web (Serper) — search "[project name] funding announcement" and "[project name] site:twitter.com"
+                 to surface any VC backing, round details, or social presence not found above.
+
+THEN also collect:
+• Basic: name, URL, source (where it was originally found), description, sector
 • Signals: any VC/accelerator mentions, funding news, launch dates
-• Velocity clue: any evidence of rapid recent growth (e.g. "just launched", "trending", recent funding)
-• commits_last_30d and commits_last_90d: the GitHub tool returns these automatically — include both
-• archived: the GitHub tool returns this — include it
+• Velocity clue: any evidence of rapid recent growth ("just launched", "trending", recent funding)
 
 HARD ACTIVITY CHECK — set status field for EVERY lead:
 • status = "inactive" if ANY of the following is true:
