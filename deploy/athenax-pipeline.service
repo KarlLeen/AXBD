@@ -1,0 +1,18 @@
+[Unit]
+Description=AthenaX BD Agent — weekly pipeline scheduler
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=athenax
+WorkingDirectory=/opt/athenax
+EnvironmentFile=/opt/athenax/.env
+ExecStart=/opt/athenax/.venv/bin/athenax schedule --day monday --time 09:00
+Restart=on-failure
+RestartSec=60
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

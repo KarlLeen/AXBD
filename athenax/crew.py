@@ -149,20 +149,20 @@ SEARCH STRATEGY:
 
 4. Web search (Serper) — run ALL of the following targeted queries:
 
-   VC PORTFOLIO MONITORING (run each separately):
-   • "a16z new investment announcement 2026 crypto AI"
-   • "Paradigm portfolio company 2026"
-   • "Polychain new investment 2026"
-   • "Multicoin Capital portfolio 2026"
-   • "YC W26 batch companies list"
-   • "Sequoia crypto AI investment 2026"
+   VC PORTFOLIO MONITORING (run each separately, append "after:2025-06-01" to each query):
+   • "a16z new investment announcement 2026 crypto AI after:2025-06-01"
+   • "Paradigm portfolio company 2026 after:2025-06-01"
+   • "Polychain new investment 2026 after:2025-06-01"
+   • "Multicoin Capital portfolio 2026 after:2025-06-01"
+   • "YC W26 batch companies list after:2025-06-01"
+   • "Sequoia crypto AI investment 2026 after:2025-06-01"
 
-   CONFERENCE & HACKATHON WINNERS:
-   • "ETHGlobal hackathon winner 2026"
-   • "ETHDenver 2026 winner project"
-   • "NeurIPS 2025 demo day startup"
-   • "YC Demo Day W26 AI startup"
-   • "Token2049 2026 featured project"
+   CONFERENCE & HACKATHON WINNERS (append "after:2025-06-01" to each query):
+   • "ETHGlobal hackathon winner 2026 after:2025-06-01"
+   • "ETHDenver 2026 winner project after:2025-06-01"
+   • "NeurIPS 2025 demo day startup after:2025-06-01"
+   • "YC Demo Day W26 AI startup after:2025-06-01"
+   • "Token2049 2026 featured project after:2025-06-01"
 
 FOR EACH LEAD COLLECT:
 • Basic: name, URL, source, description, sector (your best guess)
@@ -171,14 +171,24 @@ FOR EACH LEAD COLLECT:
 • LinkedIn: profile URL, recent post (if available)
 • Signals: any VC/accelerator mentions, funding news, launch dates
 • Velocity clue: any evidence of rapid recent growth (e.g. "just launched", "trending", recent funding)
-• commits_last_30d: the GitHub tool returns this automatically — include it in the output
+• commits_last_30d and commits_last_90d: the GitHub tool returns these automatically — include both
+• archived: the GitHub tool returns this — include it
 
-Return a single JSON array.
+HARD ACTIVITY CHECK — set status field for EVERY lead:
+• status = "inactive" if ANY of the following is true:
+  - GitHub repo is archived (archived == true)
+  - commits_last_90d == 0 (no commits in 90 days; treat null as unknown, not inactive)
+  - Project has publicly announced shutdown, sunset, or wind-down
+• status = "active" otherwise
+Do NOT pass inactive leads to the Evaluator — exclude them from the output array.
+
+Return a single JSON array of ACTIVE leads only.
 """,
         expected_output=(
-            "A JSON array of 15–20 lead objects, each with: "
-            "source, name, url, description, sector, "
-            "github_stars, github_forks, commits_last_30d (int or null), "
+            "A JSON array of active leads only (inactive leads excluded). Each object has: "
+            "source, name, url, description, sector, status ('active'), "
+            "github_stars, github_forks, archived (bool), "
+            "commits_last_30d (int or null), commits_last_90d (int or null), "
             "tech_stack (array or null), "
             "linkedin_profile, linkedin_recent_post, "
             "twitter_handle, twitter_followers, twitter_recent_tweet, "

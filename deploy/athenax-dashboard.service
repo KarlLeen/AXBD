@@ -1,0 +1,19 @@
+[Unit]
+Description=AthenaX BD Agent — web dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=athenax
+WorkingDirectory=/opt/athenax
+EnvironmentFile=/opt/athenax/.env
+Environment=DASHBOARD_PORT=8080
+ExecStart=/opt/athenax/.venv/bin/athenax dashboard
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

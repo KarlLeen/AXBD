@@ -23,7 +23,7 @@ class GitHubTool(BaseTool):
     description: str = (
         "Search GitHub for trending repositories matching Web3/DAO keywords. "
         "Returns repo name, URL, description, stars, forks, language, topics, "
-        "and commits_last_30d for velocity scoring."
+        "archived status, commits_last_30d and commits_last_90d for velocity scoring."
     )
     args_schema: type[BaseModel] = GitHubSearchInput
 
@@ -58,7 +58,8 @@ class GitHubTool(BaseTool):
         data = _search()
         results = []
         for repo in data.get("items", []):
-            commits = self._commits_last_30d(repo["full_name"], headers)
+            commits_30d = self._commits_since(repo["full_name"], headers, days=30)
+            commits_90d = self._commits_since(repo["full_name"], headers, days=90)
             results.append({
                 "source": "github",
                 "name": repo["full_name"],
@@ -66,7 +67,9 @@ class GitHubTool(BaseTool):
                 "description": repo.get("description", ""),
                 "github_stars": repo["stargazers_count"],
                 "github_forks": repo["forks_count"],
-                "commits_last_30d": commits,
+                "archived": repo.get("archived", False),
+                "commits_last_30d": commits_30d,
+                "commits_last_90d": commits_90d,
                 "tech_stack": [repo["language"]] if repo.get("language") else [],
                 "topics": repo.get("topics", []),
                 "homepage": repo.get("homepage", ""),
@@ -74,9 +77,9 @@ class GitHubTool(BaseTool):
             })
         return json.dumps(results, ensure_ascii=False, indent=2)
 
-    def _commits_last_30d(self, full_name: str, headers: dict) -> int | None:
-        """Return commit count in the last 30 days. Returns None on failure."""
-        since = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    def _commits_since(self, full_name: str, headers: dict, days: int) -> int | None:
+        """Return commit count over the last `days` days. Returns None on failure."""
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         try:
             @api_retry
             def _fetch():
