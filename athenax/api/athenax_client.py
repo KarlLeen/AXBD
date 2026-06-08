@@ -1,4 +1,4 @@
-"""AthenaX API client — mapped to AthenaX products/categories schema."""
+"""AthenaX Internal Service API client."""
 import json
 import os
 import re
@@ -12,73 +12,110 @@ def _now() -> str:
 
 
 def _to_slug(name: str) -> str:
-    """Convert a project name to a URL slug. e.g. 'unionlabs/union' → 'unionlabs-union'"""
     return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:150]
 
 
 class AthenaXClient:
     def __init__(self):
         self.base_url = os.getenv("ATHENAX_API_URL", "http://localhost:8000").rstrip("/")
-        api_key = os.getenv("ATHENAX_API_KEY", "")
-        self._headers = {"X-API-Key": api_key} if api_key else {}
+        internal_key = os.getenv("INTERNAL_API_KEY", "")
+        self._headers = {
+            "X-Internal-Key": internal_key,
+            "Content-Type": "application/json",
+        }
 
     # ── Categories ────────────────────────────────────────────────────────────
 
-    def get_categories(self) -> list[dict]:
-        """Fetch available product categories from AthenaX."""
-        resp = httpx.get(
-            f"{self.base_url}/api/v1/categories",
-            headers=self._headers,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-    def match_category(self, sector: str, categories: list[dict]) -> int | None:
-        """Find the best-matching category_id for a given sector string."""
-        if not categories or not sector:
+    def get_category_by_name(self, name: str) -> dict | None:
+        """GET /internal/categories/by-name — exact match, case-insensitive.
+        Returns None on 404 (admin must create the category first)."""
+        try:
+            resp = httpx.get(
+                f"{self.base_url}/api/v1/internal/categories/by-name",
+                params={"name": name},
+                headers=self._headers,
+                timeout=15,
+            )
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.ConnectError:
             return None
-        sector_lower = sector.lower()
-        # Exact match first
-        for cat in categories:
-            if cat["name"].lower() == sector_lower:
-                return cat["id"]
-        # Partial match
-        for cat in categories:
-            if cat["name"].lower() in sector_lower or sector_lower in cat["name"].lower():
-                return cat["id"]
-        return None
+
+    def get_subcategory_by_name(self, name: str) -> dict | None:
+        """GET /internal/subcategories/by-name — exact match, case-insensitive."""
+        try:
+            resp = httpx.get(
+                f"{self.base_url}/api/v1/internal/subcategories/by-name",
+                params={"name": name},
+                headers=self._headers,
+                timeout=15,
+            )
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.ConnectError:
+            return None
+
+    def resolve_category_id(self, sector: str) -> int | None:
+        """Map an agent sector string to an AthenaX category ID.
+        Tries the sector name directly; falls back to known aliases."""
+        _ALIASES = {
+            "ai & agents": "AI & Agents",
+            "ai":          "AI & Agents",
+            "developer tools": "Developer Tools",
+            "dev tools":   "Developer Tools",
+            "infrastructure": "Infrastructure",
+            "infra":       "Infrastructure",
+            "crypto":      "Crypto",
+            "biotech":     "Biotech",
+            "robotics":    "Robotics",
+            "rwa":         "RWA",
+        }
+        name = _ALIASES.get(sector.lower(), sector)
+        cat = self.get_category_by_name(name)
+        return cat["id"] if cat else None
 
     # ── Products ──────────────────────────────────────────────────────────────
 
+    def get_product_by_name(self, name: str) -> dict | None:
+        """GET /internal/products/by-name — returns any status including PENDING.
+        Returns None on 404."""
+        try:
+            resp = httpx.get(
+                f"{self.base_url}/api/v1/internal/products/by-name",
+                params={"name": name},
+                headers=self._headers,
+                timeout=15,
+            )
+            if resp.status_code == 404:
+                return None
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.ConnectError:
+            return None
+
     def push_product(self, lead: dict, evaluation: dict, category_id: int | None = None) -> str:
-        """
-        Push a discovered project as a Draft product to AthenaX.
-        Maps agent lead + evaluation data → AthenaX products schema.
-        Returns the remote product id.
-        """
+        """POST /internal/products — creates a PENDING product.
+        Returns the remote product id string. Raises on failure."""
         name = lead.get("name", "")
         desc = lead.get("description", "") or ""
         short_desc = (desc[:147] + "...") if len(desc) > 150 else desc
         if not short_desc:
             short_desc = evaluation.get("reason_for_partnership", "")[:150]
 
-        payload = {
-            "slug": _to_slug(name),
+        payload: dict = {
             "name": name,
             "short_desc": short_desc,
             "desc": _build_desc(desc, evaluation),
-            "status": "Draft",
-            "stage": lead.get("funding_stage"),
-            "github": _extract_github_url(lead),
-            "category_id": category_id,
-            # Agent metadata stored as extra fields (AthenaX may ignore unknowns)
-            "agent_score": evaluation.get("compatibility_score"),
-            "agent_sector": lead.get("sector"),
         }
+        if category_id is not None:
+            payload["categoryIds"] = [category_id]
 
         resp = httpx.post(
-            f"{self.base_url}/api/v1/products",
+            f"{self.base_url}/api/v1/internal/products",
             json=payload,
             headers=self._headers,
             timeout=15,
@@ -87,187 +124,61 @@ class AthenaXClient:
         data = resp.json()
         return str(data.get("id") or data.get("product_id", ""))
 
+    # ── Legacy methods kept for CLI review / Telegram bot backward compat ─────
+
+    def get_categories(self) -> list[dict]:
+        """Legacy: fetch all categories. Kept for backward compat — prefer resolve_category_id."""
+        try:
+            resp = httpx.get(
+                f"{self.base_url}/api/v1/internal/categories/by-name",
+                params={"name": ""},
+                headers=self._headers,
+                timeout=15,
+            )
+            if resp.status_code in (404, 422):
+                return []
+            resp.raise_for_status()
+            data = resp.json()
+            return data if isinstance(data, list) else [data]
+        except Exception:
+            return []
+
+    def match_category(self, sector: str, _categories: list[dict]) -> int | None:
+        """Legacy wrapper — delegates to resolve_category_id."""
+        return self.resolve_category_id(sector)
+
     def push_product_links(self, product_id: str, lead: dict) -> None:
-        """Push website, GitHub, and Twitter links for a product."""
-        links = _build_links(lead)
-        for link in links:
-            try:
-                httpx.post(
-                    f"{self.base_url}/api/v1/products/{product_id}/links",
-                    json=link,
-                    headers=self._headers,
-                    timeout=10,
-                )
-            except Exception:
-                pass  # links are enrichment — don't fail the whole push
+        """Not part of internal API spec — no-op."""
+        pass
 
     def push_product_backers(self, product_id: str, lead: dict) -> None:
-        """Push known VC backers for a product."""
-        vc = lead.get("vc_backing", "")
-        if not vc:
-            return
-        try:
-            httpx.post(
-                f"{self.base_url}/api/v1/products/{product_id}/backers",
-                json={"name": vc},
-                headers=self._headers,
-                timeout=10,
-            )
-        except Exception:
-            pass
+        """Not part of internal API spec — no-op."""
+        pass
 
     def push_outreach_draft(self, product_id: str, draft: dict, evaluation: dict) -> None:
-        """
-        Push the outreach draft as a product comment (internal review note).
-        Uses product_comments table.
-        """
-        channel = "Twitter DM" if draft.get("channel") == "twitter_dm" else "Email"
-        subject = f"Subject: {draft['subject']}\n\n" if draft.get("subject") else ""
-        text = (
-            f"[Outreach Draft — {channel}]\n"
-            f"Score: {evaluation.get('compatibility_score', '?')}/100\n"
-            f"Reason: {evaluation.get('reason_for_partnership', '')}\n\n"
-            f"{subject}{draft.get('body', '')}"
-        )
-        try:
-            httpx.post(
-                f"{self.base_url}/api/v1/products/{product_id}/comments",
-                json={"text": text},
-                headers=self._headers,
-                timeout=10,
-            )
-        except Exception:
-            pass
-
-    # ── Legacy outreach endpoints (kept for backward compat with mock dev flow) ──
+        """Not part of internal API spec — no-op."""
+        pass
 
     def push_draft(self, data: dict, remote_lead_id: str) -> str:
-        """Push a pending outreach draft. Returns remote outreach UUID."""
-        payload = {
-            "lead_id": remote_lead_id,
-            "channel": data["channel"],
-            "subject": data.get("subject"),
-            "body": data["body"],
-            "status": "pending",
-            "lead_name": data.get("lead_name", ""),
-            "compatibility_score": data.get("compatibility_score"),
-        }
-        resp = httpx.post(
-            f"{self.base_url}/api/v1/outreach",
-            json=payload,
-            headers=self._headers,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()["outreach_id"]
+        raise NotImplementedError("Legacy outreach endpoint not available in internal API")
 
     def push_outreach(self, data: dict, remote_lead_id: str, approved_at: str) -> str:
-        """Push an approved outreach draft. Returns remote outreach UUID."""
-        payload = {
-            "lead_id": remote_lead_id,
-            "channel": data["channel"],
-            "subject": data.get("subject"),
-            "body": data["body"],
-            "status": "approved",
-            "approved_at": approved_at,
-        }
-        resp = httpx.post(
-            f"{self.base_url}/api/v1/outreach",
-            json=payload,
-            headers=self._headers,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()["outreach_id"]
+        raise NotImplementedError("Legacy outreach endpoint not available in internal API")
 
     def patch_outreach_status(self, remote_outreach_id: str, status: str) -> dict:
-        resp = httpx.patch(
-            f"{self.base_url}/api/v1/outreach/{remote_outreach_id}",
-            json={"status": status},
-            headers=self._headers,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()
+        raise NotImplementedError("Legacy outreach endpoint not available in internal API")
 
     def get_pending_outreach(self) -> list[dict]:
-        resp = httpx.get(
-            f"{self.base_url}/api/v1/outreach",
-            params={"status": "pending"},
-            headers=self._headers,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()
+        raise NotImplementedError("Legacy outreach endpoint not available in internal API")
 
     def get_lead(self, remote_lead_id: str) -> dict:
-        resp = httpx.get(
-            f"{self.base_url}/api/v1/leads/{remote_lead_id}",
-            headers=self._headers,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()
+        raise NotImplementedError("Legacy lead endpoint not available in internal API")
 
-    # Legacy push_lead — kept for CLI review backward compat
     def push_lead(self, data: dict) -> str:
-        payload = {
-            "name": data["name"],
-            "url": data["url"],
-            "source": data["source"],
-            "compatibility_score": data["compatibility_score"],
-            "reason_for_partnership": data["reason_for_partnership"],
-            "nounish_traits": json.loads(data.get("nounish_traits") or "[]"),
-            "tech_stack": json.loads(data.get("tech_stack") or "[]"),
-            "submitted_at": _now(),
-        }
-        resp = httpx.post(
-            f"{self.base_url}/api/v1/leads",
-            json=payload,
-            headers=self._headers,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()["lead_id"]
+        raise NotImplementedError("Legacy lead endpoint not available in internal API")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _extract_github_url(lead: dict) -> str | None:
-    if lead.get("source") == "github":
-        return lead.get("url")
-    tech = lead.get("tech_stack", "")
-    url = lead.get("url", "")
-    if "github.com" in url:
-        return url
-    return None
-
-
-def _build_links(lead: dict) -> list[dict]:
-    links = []
-    source = lead.get("source", "")
-    url = lead.get("url", "")
-
-    if source == "github" and url:
-        links.append({"link_type": "github", "url": url, "is_primary": True})
-    elif url:
-        links.append({"link_type": "website", "url": url, "is_primary": True})
-
-    if lead.get("twitter_handle"):
-        links.append({
-            "link_type": "twitter",
-            "url": f"https://twitter.com/{lead['twitter_handle']}",
-            "is_primary": False,
-        })
-    if lead.get("linkedin_profile"):
-        links.append({
-            "link_type": "website",
-            "url": lead["linkedin_profile"],
-            "label": "LinkedIn",
-            "is_primary": False,
-        })
-    return links
-
 
 def _build_desc(raw_desc: str, evaluation: dict) -> str:
     parts = []
@@ -282,9 +193,8 @@ def _build_desc(raw_desc: str, evaluation: dict) -> str:
     traits = evaluation.get("nounish_traits")
     if traits:
         if isinstance(traits, str):
-            import json as _json
             try:
-                traits = _json.loads(traits)
+                traits = json.loads(traits)
             except Exception:
                 traits = []
         if traits:
