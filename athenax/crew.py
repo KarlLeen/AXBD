@@ -248,8 +248,8 @@ Return your results as a JSON array.
             "signal_boosters (string array — e.g. ['YC W25', 'a16z portfolio']), "
             "velocity_assessment (1 sentence on growth trajectory), "
             "nounish_traits (string array — keep for Nouns DAO context), "
-            "reason_for_partnership (1–2 sentences), "
-            "listing_fit_notes (1 sentence on AthenaX fit)."
+            "reason_for_partnership (1–2 sentences — why AthenaX incubation/distribution fits this project), "
+            "listing_fit_notes (1 sentence — which AthenaX value prop is most relevant: capital alignment, distribution, narrative, or ecosystem access)."
         ),
         agent=evaluator,
         context=[scout_task],
@@ -261,18 +261,39 @@ Return your results as a JSON array.
         description="""
 You have the top 5 evaluated leads. Draft one outreach message per lead.
 
-RULES:
+━━━ WHO YOU ARE ━━━
+You represent AthenaX — NounsDAO's decentralized incubation and distribution layer.
+AthenaX operates upstream of grants and incentives. It is NOT an accelerator, grant
+provider, mentorship program, or marketing agency.
+
+What AthenaX actually offers a partner:
+• Capital alignment: equity, tokens, or revenue share — zero-cost model, no treasury drain
+• Distribution: 6M+ monthly ecosystem reach via AthenaX Media (long-form, live streams)
+• Narrative shaping and market signaling — early GTM clarity before dilution
+• Institutional access: NounsDAO treasury ($100M+ deployed, 33rd largest ETH holder),
+  partner ecosystems across BNB Chain, Solana, Ethereum, Mantle, Sui, Base, Aptos
+• Track record: co-built with Pudgy Penguins, Lido, Gitcoin, Parcl, Sui, and more
+
+AthenaX backs builders with infrastructure and alignment — think YZi Labs, not YC.
+Partnerships are based on alignment, not volume. AthenaX does NOT optimize for
+speed of onboarding or short-term token launches.
+
+━━━ MESSAGE RULES ━━━
 • NO generic copy-paste. Every message must reference something SPECIFIC —
   a recent tweet, a GitHub commit, a LinkedIn post, a product launch, a funding round,
   a conference talk, or a hackathon win.
-• Choose channel: Twitter DM if they have an active Twitter presence (≥1k followers);
+• Choose channel: Twitter DM if they have active Twitter presence (≥1k followers);
   email if LinkedIn is stronger or no Twitter.
 • Twitter DMs: max 280 characters, punchy, peer-to-peer.
-• Emails: subject line required. Body under 150 words. Mention AthenaX naturally
-  (positioning: curated frontier tech launchpad, not a generic directory).
+• Emails: subject line required. Body under 150 words.
 • Tone: builder-to-builder, curious, direct. Never corporate or salesy.
-• For established projects, lead with mutual credibility — reference their sector standing.
-• For new projects, lead with what you noticed specifically about their momentum.
+• For established projects: lead with mutual credibility, reference their sector standing,
+  and frame AthenaX as distribution + narrative infrastructure — not just another partner.
+• For new/early projects: lead with what you noticed about their momentum, then offer
+  the zero-cost incubation angle — capital alignment with no treasury drain.
+• Never say "launchpad", "directory", or "accelerator". Say "incubation layer" or
+  "distribution infrastructure" if you need a label. Preferably just be specific.
+• Close with a low-friction ask: a 15-min call, or just "curious if aligned."
 
 Return 5 draft objects in JSON.
 """,
