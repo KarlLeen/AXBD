@@ -11,7 +11,7 @@ id "$SERVICE_USER" &>/dev/null || useradd --system --no-create-home --shell /usr
 
 echo "==> [2/7] Installing system dependencies..."
 apt-get update -q
-apt-get install -y -q git curl python3.12 python3.12-venv python3.12-dev build-essential
+apt-get install -y -q git curl python3.12 python3.12-venv python3.12-dev build-essential nginx
 
 echo "==> [3/7] Installing uv..."
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -42,7 +42,7 @@ fi
 chmod 600 "$INSTALL_DIR/.env"
 chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/.env"
 
-echo "==> [7/7] Installing and enabling systemd services..."
+echo "==> [7/8] Installing and enabling systemd services..."
 DEPLOY_DIR="$INSTALL_DIR/deploy"
 for svc in athenax-pipeline athenax-bot athenax-dashboard; do
   cp "$DEPLOY_DIR/$svc.service" "/etc/systemd/system/$svc.service"
@@ -55,6 +55,13 @@ for svc in athenax-pipeline athenax-bot athenax-dashboard; do
   systemctl restart "$svc"
 done
 
+echo "==> [8/8] Configuring nginx reverse proxy..."
+cp "$DEPLOY_DIR/nginx-dashboard.conf" /etc/nginx/sites-available/athenax-dashboard
+ln -sf /etc/nginx/sites-available/athenax-dashboard /etc/nginx/sites-enabled/athenax-dashboard
+# Remove default site if still enabled to avoid port 80 conflict
+rm -f /etc/nginx/sites-enabled/default
+nginx -t && systemctl enable nginx && systemctl reload nginx
+
 echo ""
 echo "====================================================="
 echo " AthenaX BD Agent deployed successfully!"
@@ -63,7 +70,12 @@ echo ""
 echo " Services:"
 echo "   systemctl status athenax-pipeline   # weekly scheduler"
 echo "   systemctl status athenax-bot        # Telegram bot"
-echo "   systemctl status athenax-dashboard  # web UI → http://<VPS-IP>:8080"
+echo "   systemctl status athenax-dashboard  # web UI"
+echo "   systemctl status nginx              # reverse proxy"
+echo ""
+echo " Dashboard:"
+echo "   https://bd.limlamleen.com  (after Cloudflare DNS A record is set)"
+echo "   http://<VPS-IP>:8080       (direct access, no domain needed)"
 echo ""
 echo " Logs:"
 echo "   journalctl -fu athenax-pipeline"
