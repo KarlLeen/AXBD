@@ -21,13 +21,21 @@ MODEL = "deepseek/deepseek-chat"   # DeepSeek-V3 via official API
 # ── AthenaX Selection Criteria (embedded for agent context) ──────────────────
 
 SECTORS = """
-AI & Agents      — foundation models, agents, AI infra, MLOps, AI-native apps
-Biotech          — drug discovery, genomics, longevity, lab automation, computational bio
-Crypto           — L1/L2, DEXs, wallets, ZK, bridges, DePIN, stablecoins, DAOs
-Developer Tools  — SDKs, APIs, editors, CI/CD, testing, monitoring, DB tooling
-Infrastructure   — cloud, compute, networking, storage, security, edge, data pipelines
-Robotics         — autonomous vehicles, drones, industrial robots, humanoids, sim-to-real
-RWA              — tokenized real estate, commodities, treasuries, private credit, carbon credits
+AI & Agents      — foundation models, fine-tuning platforms, autonomous agents, AI infrastructure,
+                   MLOps, AI-native applications
+Biotech          — drug discovery, synthetic biology, genomics, longevity, diagnostics,
+                   lab automation, computational biology
+Crypto           — L1/L2 protocols, DEXs, CEXs, wallets, ZK-proofs, bridges, DePIN,
+                   stablecoins, on-chain credit, DAOs
+Developer Tools  — SDKs, APIs, code editors, CI/CD, testing, monitoring, database tooling,
+                   developer platforms
+Infrastructure   — cloud, compute, networking, storage, security, edge, data pipelines,
+                   orchestration
+Robotics         — autonomous vehicles, drones, industrial robots, humanoids, manipulation
+                   hardware, ROS tooling, sim-to-real
+RWA              — tokenized real estate, commodities, treasuries, private credit, carbon credits,
+                   trade finance, asset-backed lending, fractionalization platforms, compliance
+                   and oracle infrastructure for off-chain asset verification
 """
 
 DISQUALIFIERS = """
@@ -50,24 +58,30 @@ IMMEDIATE REJECTION — any one of these disqualifies a lead entirely:
 
 NEW_PROJECT_CRITERIA = """
 MINIMUM REQUIREMENTS for new/early-stage projects (the 70% bucket):
-✓ Working product — functional prototype, beta, or live product (verify via URL, demo, or GitHub activity)
-✓ Live website — functional site with clear product description
-✓ GitHub OR Twitter presence (at least one):
+✓ Working product — functional prototype, beta, or live product
+    Verify: visit product URL, check for demo, or confirm GitHub activity shows real code
+✓ Live website — functional site with clear product description (not just a landing page)
+✓ GitHub OR Twitter/X presence (at least one is sufficient):
     - GitHub: public repo with meaningful commit history (not empty, not a stale fork)
-    - Twitter/X: active account, ≥1,000 followers minimum (≥3,000 preferred)
+    - Twitter/X: active account, ≥1,000 followers minimum; ≥3,000 preferred
 ✓ Team identifiability — at least one founder publicly identifiable (real name, LinkedIn, prior work)
 ✓ Sector fit — clearly falls within one of the seven sectors above
 
 SIGNAL BOOSTERS (not required, raise priority score):
-+15  YC-backed (current or recent batch)
-+12  a16z portfolio or public radar (blog, podcast, partner tweets)
-+10  Other top-tier VC: Sequoia, Paradigm, Polychain, Founders Fund, Lux Capital,
-     Multicoin, Pantera, Coatue, Radical Ventures, Khosla, Heavybit, ParaFi, etc.
-+8   Active fundraising (currently raising or just closed a round)
-+6   Accelerator alumni (Techstars, Neo, Entrepreneur First, On Deck, Station F)
-+5   Academic spin-out (MIT, Stanford, CMU, etc. with published research)
-+8   Open-source traction: GitHub stars > 500, growing contributor base
-+5   Active community (Discord/Telegram with real conversation)
++15  YC-backed — Y Combinator acceptance is a strong quality filter; track current and recent batches
++12  a16z portfolio or radar — a16z investment OR public interest (blog, podcast, partner tweets)
++10  Other top-tier VC: Sequoia, Founders Fund, Index Ventures, Accel, Lightspeed (generalist);
+     Paradigm, Polychain, Pantera, Multicoin, Framework Ventures, Dragonfly (crypto);
+     Coatue, Tiger Global, Radical Ventures, Conviction Partners (AI);
+     Lux Capital, a16z Bio, Flagship Pioneering, GV, DCVC (deep tech/bio);
+     Khosla Ventures, Eclipse Ventures, Toyota Ventures (robotics);
+     Heavybit, Redpoint, Unusual Ventures, Greylock (dev tools);
+     ParaFi Capital, Superstate, Galaxy Digital, Brevan Howard Digital, Hamilton Lane (RWA)
++8   Active fundraising — currently raising or just closed a round (urgency + newsworthiness)
++6   Accelerator alumni — Techstars, Neo, Entrepreneur First, On Deck, Station F, or sector programs
++5   Academic origin — spun out of university lab (MIT, Stanford, CMU etc.) with published research
++8   Open-source traction — GitHub stars > 500, growing contributor base, active issues/PRs
++5   Active community — Discord/Telegram with real conversation (not bot-filled)
 
 VELOCITY WEIGHTING (applies to all numeric signals):
   Weight growth RATE more than absolute numbers.
@@ -77,19 +91,31 @@ VELOCITY WEIGHTING (applies to all numeric signals):
 
 ESTABLISHED_PROJECT_CRITERIA = """
 ESTABLISHED PROJECT requirements (the 30% bucket — trust anchors):
-✓ Market presence: listed on CoinMarketCap/CoinGecko (crypto) OR major industry reports/press (non-crypto)
+✓ Market presence: listed on CoinMarketCap/CoinGecko (crypto) OR recognized in major
+    industry reports, press, or analyst coverage (non-crypto)
 ✓ Tier 1 or Tier 2 in their sector:
-    Tier 1 = household name in the industry
+    Tier 1 = household name in the industry (market cap rank, dominant user base)
     Tier 2 = well-known among practitioners, top 20 in their niche
 ✓ Sector leadership: demonstrably a leader in at least one sub-vertical
-✓ Active development: still shipping (GitHub activity, changelogs, announcements)
+    (e.g. leading L2 by TVL, top DEX by volume, dominant CI/CD tool by dev surveys)
+✓ Active development: still actively shipping — NOT legacy or stagnant
 ✓ Brand fit: frontier tech — NOT consumer social, lifestyle brands, or low-tech SaaS
 
-Sector anchor examples:
-  Crypto: Ethereum, Solana, Arbitrum, Uniswap, MetaMask, zkSync, Aave, Lido, EigenLayer
-  AI & Agents: Anthropic, Mistral, LangChain, CrewAI, Cohere
-  Dev Tools: category leaders that developers discuss on Hacker News
-  RWA: Ondo Finance, Centrifuge, Maple Finance, Securitize, Backed Finance
+Sector anchor targets:
+  Crypto:    L1/L2 leaders (Ethereum, Solana, Arbitrum, Optimism, Base);
+             top DEXs (Uniswap, Jupiter); major wallets (MetaMask, Phantom, Rabby);
+             ZK pioneers (zkSync, Starknet, Aztec); DeFi anchors (Aave, Lido, EigenLayer)
+  AI/Agents: Foundation model companies (Anthropic, Mistral, Cohere);
+             agent frameworks (LangChain, CrewAI); MLOps leaders with significant adoption
+  Dev Tools: Category leaders — tools developers actually use and discuss on Hacker News
+  Infra:     Cloud-native leaders, major open-source infra projects, compute/networking innovators
+  Biotech:   Well-funded startups with published research + clinical/regulatory milestones;
+             companies featured in Nature, Science, or STAT News
+  Robotics:  Companies with demonstrated hardware + real-world deployments, or significant
+             backing from robotics-focused funds (Khosla, Eclipse, Toyota Ventures)
+  RWA:       Tokenization leaders (Ondo Finance, Centrifuge, Maple Finance);
+             infrastructure (Chainlink CCIP, Goldfinch); institutional platforms (Securitize, Backed);
+             projects with real AUM or TVL — NOT just tokenization concepts
 """
 
 PIPELINE_MIX = "Target mix: 70% new/early-stage + 30% established projects across the top 5 leads."
@@ -149,20 +175,44 @@ SEARCH STRATEGY:
 
 4. Web search (Serper) — run ALL of the following targeted queries:
 
-   VC PORTFOLIO MONITORING (run each separately, append "after:2025-06-01" to each query):
+   VC PORTFOLIO MONITORING (run each separately, all with "after:2025-06-01"):
+   Generalist tier 1:
+   • "Sequoia new investment 2026 AI crypto after:2025-06-01"
+   • "Founders Fund portfolio company 2026 after:2025-06-01"
+   • "Accel Index Ventures Lightspeed new investment 2026 after:2025-06-01"
+   YC:
+   • "YC W26 batch companies list after:2025-06-01"
+   • "YC Demo Day W26 AI startup after:2025-06-01"
+   a16z:
    • "a16z new investment announcement 2026 crypto AI after:2025-06-01"
+   • "a16z Bio portfolio company 2026 after:2025-06-01"
+   Crypto-focused:
    • "Paradigm portfolio company 2026 after:2025-06-01"
    • "Polychain new investment 2026 after:2025-06-01"
-   • "Multicoin Capital portfolio 2026 after:2025-06-01"
-   • "YC W26 batch companies list after:2025-06-01"
-   • "Sequoia crypto AI investment 2026 after:2025-06-01"
+   • "Multicoin Capital Dragonfly Framework Ventures portfolio 2026 after:2025-06-01"
+   AI-focused:
+   • "Coatue Tiger Global Radical Ventures AI investment 2026 after:2025-06-01"
+   Deep tech / Bio:
+   • "Lux Capital Flagship Pioneering DCVC GV new investment 2026 after:2025-06-01"
+   Robotics:
+   • "Khosla Ventures Eclipse Ventures Toyota Ventures robotics investment 2026 after:2025-06-01"
+   RWA / TradFi:
+   • "ParaFi Capital Galaxy Digital Hamilton Lane tokenization investment 2026 after:2025-06-01"
 
-   CONFERENCE & HACKATHON WINNERS (append "after:2025-06-01" to each query):
+   CONFERENCE & HACKATHON WINNERS (all with "after:2025-06-01"):
+   AI:
+   • "NeurIPS ICML 2026 demo day startup winner after:2025-06-01"
+   • "AI Grant Cerebral Valley startup 2026 after:2025-06-01"
+   Crypto:
    • "ETHGlobal hackathon winner 2026 after:2025-06-01"
-   • "ETHDenver 2026 winner project after:2025-06-01"
-   • "NeurIPS 2025 demo day startup after:2025-06-01"
-   • "YC Demo Day W26 AI startup after:2025-06-01"
+   • "ETHDenver Devconnect Consensus 2026 winner project after:2025-06-01"
    • "Token2049 2026 featured project after:2025-06-01"
+   Biotech:
+   • "JP Morgan Healthcare Conference BIO 2026 startup after:2025-06-01"
+   Robotics:
+   • "IROS CoRL CES robotics startup 2026 after:2025-06-01"
+   Dev Tools:
+   • "KubeCon GitHub Universe DevRelCon 2026 startup after:2025-06-01"
 
 FOR EACH LEAD COLLECT:
 • Basic: name, URL, source, description, sector (your best guess)
