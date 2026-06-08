@@ -344,6 +344,8 @@ speed of onboarding or short-term token launches.
 • Never say "launchpad", "directory", or "accelerator". Say "incubation layer" or
   "distribution infrastructure" if you need a label. Preferably just be specific.
 • Close with a low-friction ask: a 15-min call, or just "curious if aligned."
+• Sign emails as "— Karl". Sign Twitter DMs without a signature (DMs have no sign-off).
+• NEVER use placeholder text like "[Your name]", "[Name]", or "[Your Name]". Always use "Karl".
 
 Return 5 draft objects in JSON.
 """,
