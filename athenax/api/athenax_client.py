@@ -102,17 +102,45 @@ class AthenaXClient:
         Returns the remote product id string. Raises on failure."""
         name = lead.get("name", "")
         desc = lead.get("description", "") or ""
+
+        # shortDesc: one-line tagline, max 150 chars
         short_desc = (desc[:147] + "...") if len(desc) > 150 else desc
         if not short_desc:
             short_desc = evaluation.get("reason_for_partnership", "")[:150]
 
         payload: dict = {
             "name": name,
-            "short_desc": short_desc,
-            "desc": _build_desc(desc, evaluation),
+            "shortDesc": short_desc or None,
+            "description": _build_desc(desc, evaluation, lead),
+            "imported": True,
         }
+
+        # Primary URL
+        url = lead.get("url") or lead.get("homepage")
+        if url:
+            payload["url"] = url[:500]
+
+        # Funding stage — map to allowed enum values
+        stage = _map_stage(lead.get("funding_stage"))
+        if stage:
+            payload["stage"] = stage
+
+        # Total funding raised (USD number)
+        funding = lead.get("funding_amount") or lead.get("funding")
+        if isinstance(funding, (int, float)) and funding > 0:
+            payload["funding"] = funding
+
+        # Category
         if category_id is not None:
             payload["categoryIds"] = [category_id]
+
+        # VC backers — array of strings
+        vc = lead.get("vc_backing")
+        if vc:
+            payload["backers"] = [b.strip() for b in str(vc).split(",") if b.strip()]
+
+        # Links — github, twitter, website
+        payload["links"] = _build_links(lead)
 
         resp = httpx.post(
             f"{self.base_url}/api/v1/internal/products",
@@ -180,10 +208,88 @@ class AthenaXClient:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _build_desc(raw_desc: str, evaluation: dict) -> str:
+# Stage enum allowed by the API (case-sensitive)
+_STAGE_MAP = {
+    "pre-seed":           "Pre-Seed",
+    "pre seed":           "Pre-Seed",
+    "seed":               "Seed",
+    "series a":           "Series A",
+    "series b":           "Series B",
+    "series c":           "Series B",   # API has no Series C — map to Series B
+    "beta":               "Beta",
+    "launched":           "Launched",
+    "active":             "Active",
+    "active development": "Active Development",
+    "acquired":           "Acquired / Operating",
+    "acquired / operating": "Acquired / Operating",
+}
+
+def _map_stage(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    return _STAGE_MAP.get(raw.strip().lower())
+
+
+def _build_links(lead: dict) -> list[dict]:
+    """Build the links array for the API payload."""
+    links = []
+    source = lead.get("source", "")
+    url = lead.get("url", "") or ""
+
+    # GitHub
+    github_url = None
+    if source == "github" and url:
+        github_url = url
+    elif "github.com" in url:
+        github_url = url
+    if github_url:
+        links.append({"linkType": "github", "url": github_url[:500]})
+
+    # Website (if different from GitHub)
+    homepage = lead.get("homepage") or lead.get("website_url")
+    if homepage and "github.com" not in homepage:
+        links.append({"linkType": "website", "url": homepage[:500]})
+    elif url and "github.com" not in url and source != "github":
+        links.append({"linkType": "website", "url": url[:500]})
+
+    # Twitter/X
+    handle = lead.get("twitter_handle")
+    if handle:
+        tw_url = f"https://twitter.com/{handle.lstrip('@')}"
+        links.append({"linkType": "twitter", "url": tw_url})
+
+    # LinkedIn (as "other" — no linkedin linkType in the API)
+    linkedin = lead.get("linkedin_profile")
+    if linkedin:
+        links.append({"linkType": "other", "url": linkedin[:500], "label": "LinkedIn"})
+
+    return links
+
+
+def _build_desc(raw_desc: str, evaluation: dict, lead: dict | None = None) -> str:
+    """Build full markdown description.
+    GitHub stars are embedded here since there's no dedicated field in the API.
+    """
     parts = []
     if raw_desc:
         parts.append(raw_desc)
+
+    # Embed GitHub signals (no dedicated API field for these)
+    if lead:
+        signals = []
+        stars = lead.get("github_stars")
+        if stars:
+            signals.append(f"GitHub stars: {stars:,}")
+        commits = lead.get("commits_last_30d")
+        if commits is not None:
+            signals.append(f"commits/30d: {commits}")
+        followers = lead.get("twitter_followers")
+        if followers:
+            signals.append(f"Twitter followers: {followers:,}")
+        if signals:
+            parts.append("\n**Traction:** " + " · ".join(signals))
+
+    # AthenaX evaluation notes
     reason = evaluation.get("reason_for_partnership", "")
     if reason:
         parts.append(f"\n**Why AthenaX:** {reason}")
@@ -199,4 +305,5 @@ def _build_desc(raw_desc: str, evaluation: dict) -> str:
                 traits = []
         if traits:
             parts.append(f"\n**Tags:** {', '.join(traits)}")
+
     return "\n".join(parts)
