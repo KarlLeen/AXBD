@@ -1,40 +1,66 @@
 #!/usr/bin/env bash
-# AthenaX BD Agent — VPS initial setup (Ubuntu/Debian, run as root)
+# AthenaX BD Agent — VPS setup (Ubuntu 24.04, 1 vCPU / 1 GB RAM)
+# Run as root: curl -fsSL https://raw.githubusercontent.com/KarlLeen/AXBD/main/deploy/setup.sh | sudo bash
 set -euo pipefail
 
 REPO="https://github.com/KarlLeen/AXBD.git"
 INSTALL_DIR="/opt/athenax"
 SERVICE_USER="athenax"
 
-echo "==> [1/7] Creating system user '$SERVICE_USER'..."
-id "$SERVICE_USER" &>/dev/null || useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
+# ── 1. Swap (critical for 1 GB RAM — pipeline peaks at ~800 MB) ──────────────
+echo "==> [1/9] Setting up 2 GB swap..."
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+  # Reduce swappiness — only use swap when truly necessary
+  echo 'vm.swappiness=10' >> /etc/sysctl.conf
+  sysctl vm.swappiness=10
+  echo "  Swap created (2 GB)"
+else
+  echo "  Swap already exists — skipping"
+fi
 
-echo "==> [2/7] Installing system dependencies..."
+# ── 2. System dependencies ────────────────────────────────────────────────────
+echo "==> [2/9] Installing system dependencies..."
 apt-get update -q
 apt-get install -y -q git curl python3.12 python3.12-venv python3.12-dev build-essential nginx
 
-echo "==> [3/7] Installing uv..."
+# ── 3. uv ─────────────────────────────────────────────────────────────────────
+echo "==> [3/9] Installing uv..."
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 
-echo "==> [4/7] Cloning / updating repo..."
+# ── 4. Repo ───────────────────────────────────────────────────────────────────
+echo "==> [4/9] Cloning / updating repo..."
 if [ -d "$INSTALL_DIR/.git" ]; then
   git -C "$INSTALL_DIR" pull --ff-only
 else
   git clone "$REPO" "$INSTALL_DIR"
 fi
-chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
 
-echo "==> [5/7] Installing Python dependencies..."
+# ── 5. Python deps ────────────────────────────────────────────────────────────
+echo "==> [5/9] Installing Python dependencies..."
 cd "$INSTALL_DIR"
 uv sync --python python3.12
 
-echo "==> [6/7] Setting up .env..."
+# ── 6. System user ────────────────────────────────────────────────────────────
+echo "==> [6/9] Creating system user '$SERVICE_USER'..."
+id "$SERVICE_USER" &>/dev/null || useradd --system --no-create-home --shell /usr/sbin/nologin "$SERVICE_USER"
+chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR"
+
+# ── 7. .env ───────────────────────────────────────────────────────────────────
+echo "==> [7/9] Setting up .env..."
 if [ ! -f "$INSTALL_DIR/.env" ]; then
   cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
   echo ""
-  echo "  *** IMPORTANT: fill in your API keys before starting services ***"
+  echo "  *** STOP: fill in your API keys before starting services ***"
   echo "  Edit: $INSTALL_DIR/.env"
+  echo "  Required keys: DEEPSEEK_API_KEY, SERPER_API_KEY, GITHUB_TOKEN,"
+  echo "                 INTERNAL_API_KEY, ATHENAX_API_URL"
+  echo "  Then re-run: systemctl restart athenax-pipeline athenax-bot athenax-dashboard"
   echo ""
 else
   echo "  .env already exists — skipping"
@@ -42,8 +68,10 @@ fi
 chmod 600 "$INSTALL_DIR/.env"
 chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_DIR/.env"
 
-echo "==> [7/8] Installing and enabling systemd services..."
+# ── 8. systemd services (memory-constrained for 1 GB RAM) ────────────────────
+echo "==> [8/9] Installing systemd services..."
 DEPLOY_DIR="$INSTALL_DIR/deploy"
+
 for svc in athenax-pipeline athenax-bot athenax-dashboard; do
   cp "$DEPLOY_DIR/$svc.service" "/etc/systemd/system/$svc.service"
 done
@@ -55,33 +83,52 @@ for svc in athenax-pipeline athenax-bot athenax-dashboard; do
   systemctl restart "$svc"
 done
 
-echo "==> [8/8] Configuring nginx reverse proxy..."
+# ── 9. nginx ──────────────────────────────────────────────────────────────────
+echo "==> [9/9] Configuring nginx..."
 cp "$DEPLOY_DIR/nginx-dashboard.conf" /etc/nginx/sites-available/athenax-dashboard
 ln -sf /etc/nginx/sites-available/athenax-dashboard /etc/nginx/sites-enabled/athenax-dashboard
-# Remove default site if still enabled to avoid port 80 conflict
 rm -f /etc/nginx/sites-enabled/default
+
+# Tune nginx for low-RAM: 1 worker, small buffers
+cat > /etc/nginx/conf.d/low-memory.conf << 'NGINXEOF'
+worker_processes 1;
+worker_rlimit_nofile 512;
+events { worker_connections 256; }
+http {
+    client_body_buffer_size    8k;
+    client_header_buffer_size  1k;
+    client_max_body_size       1m;
+    large_client_header_buffers 2 1k;
+    keepalive_timeout 15;
+    gzip on;
+    gzip_types text/plain application/json text/html;
+}
+NGINXEOF
+
 nginx -t && systemctl enable nginx && systemctl reload nginx
 
+# ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 echo "====================================================="
-echo " AthenaX BD Agent deployed successfully!"
+echo " AthenaX BD Agent deployed!"
 echo "====================================================="
+echo ""
+echo " RAM:  $(free -h | awk '/^Mem/{print $2}') physical + $(free -h | awk '/^Swap/{print $2}') swap"
 echo ""
 echo " Services:"
 echo "   systemctl status athenax-pipeline   # weekly scheduler"
 echo "   systemctl status athenax-bot        # Telegram bot"
 echo "   systemctl status athenax-dashboard  # web UI"
-echo "   systemctl status nginx              # reverse proxy"
 echo ""
 echo " Dashboard:"
-echo "   https://bd.limlamleen.com  (after Cloudflare DNS A record is set)"
-echo "   http://<VPS-IP>:8080       (direct access, no domain needed)"
+echo "   https://bd.limlamleen.com  (after Cloudflare A record → this VPS IP)"
+echo "   http://$(hostname -I | awk '{print $1}'):8080  (direct)"
 echo ""
 echo " Logs:"
 echo "   journalctl -fu athenax-pipeline"
 echo "   journalctl -fu athenax-bot"
 echo "   journalctl -fu athenax-dashboard"
 echo ""
-echo " Run pipeline immediately:"
+echo " Run pipeline now:"
 echo "   sudo -u athenax /opt/athenax/.venv/bin/athenax run"
 echo ""

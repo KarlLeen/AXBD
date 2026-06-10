@@ -1,6 +1,7 @@
 """AthenaX Partnership Agent — Admin Dashboard."""
 import json
 import os
+import threading
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -10,6 +11,42 @@ from fastapi.responses import HTMLResponse
 load_dotenv()
 
 app = FastAPI(title="AthenaX Dashboard", docs_url=None, redoc_url=None)
+
+# ── Pipeline run state ────────────────────────────────────────────────────────
+_pipeline_state = {
+    "running": False,
+    "last_run": None,       # ISO timestamp
+    "last_status": None,    # "ok" | "error"
+    "last_error": None,
+}
+_pipeline_lock = threading.Lock()
+
+
+def _run_pipeline_bg():
+    from athenax.main import run_pipeline
+    with _pipeline_lock:
+        _pipeline_state["running"] = True
+        _pipeline_state["last_error"] = None
+    try:
+        run_pipeline()
+        with _pipeline_lock:
+            _pipeline_state["last_status"] = "ok"
+    except Exception as exc:
+        with _pipeline_lock:
+            _pipeline_state["last_status"] = "error"
+            _pipeline_state["last_error"] = str(exc)
+    finally:
+        with _pipeline_lock:
+            _pipeline_state["running"] = False
+            _pipeline_state["last_run"] = datetime.now(timezone.utc).isoformat()
+
+
+@app.middleware("http")
+async def no_cache(request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 def _db():
@@ -83,6 +120,22 @@ def pipeline():
     return {"scout": scout, "evaluator": evaluator, "writer": writer}
 
 
+@app.get("/api/pipeline/status")
+def pipeline_status():
+    with _pipeline_lock:
+        return dict(_pipeline_state)
+
+
+@app.post("/api/pipeline/run")
+def trigger_run():
+    with _pipeline_lock:
+        if _pipeline_state["running"]:
+            raise HTTPException(status_code=409, detail="Pipeline already running")
+    t = threading.Thread(target=_run_pipeline_bg, daemon=True)
+    t.start()
+    return {"started": True}
+
+
 @app.get("/api/pending")
 def pending_drafts():
     with _db() as conn:
@@ -93,7 +146,7 @@ def pending_drafts():
                    l.remote_lead_id,
                    e.compatibility_score, e.nounish_traits,
                    e.reason_for_partnership, e.listing_fit_notes,
-                   e.lead_id, e.evaluation_id
+                   e.lead_id, e.id AS evaluation_id
             FROM outreach_drafts od
             JOIN leads       l ON od.lead_id       = l.id
             JOIN evaluations e ON od.evaluation_id = e.id
@@ -199,8 +252,23 @@ HTML = r"""<!DOCTYPE html>
       </div>
       <span class="font-bold text-slate-800 text-sm">AthenaX Partnership Agent</span>
     </div>
-    <div class="flex items-center gap-4">
+    <div class="flex items-center gap-3">
       <span class="text-xs text-slate-400" x-text="lastRefresh"></span>
+      <!-- Run Pipeline button -->
+      <button @click="runPipeline()" :disabled="pipelineRunning"
+        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+        :class="pipelineRunning
+          ? 'bg-indigo-50 border border-indigo-200 text-indigo-400 cursor-not-allowed'
+          : 'bg-indigo-600 hover:bg-indigo-700 text-white'">
+        <svg x-show="!pipelineRunning" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+        </svg>
+        <svg x-show="pipelineRunning" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        <span x-text="pipelineRunning ? 'Running…' : 'Run Pipeline'"></span>
+      </button>
       <button @click="refresh()"
         class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
         <svg class="w-3.5 h-3.5" :class="loading&&'animate-spin'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -222,6 +290,10 @@ HTML = r"""<!DOCTYPE html>
         <p class="text-2xl font-bold mt-0.5" :class="s.color" x-text="s.value"></p>
       </div>
     </template>
+  </div>
+  <div x-show="errorMsg" x-cloak
+       class="mt-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2">
+    ⚠️ <span x-text="errorMsg"></span>
   </div>
 </div>
 
@@ -478,6 +550,8 @@ function app() {
     stats: { total_leads:0, evaluations:0, pending:0, approved:0, rejected:0 },
     pipeline: { scout:[], evaluator:[], writer:[] },
     pending: [],
+    pipelineRunning: false,
+    _pollTimer: null,
 
     tabs: [
       { id:'pipeline', icon:'🔍', label:'Pipeline' },
@@ -502,19 +576,65 @@ function app() {
       ];
     },
 
-    async init() { await this.refresh(); setInterval(()=>this.refresh(), 30000); },
+    errorMsg: '',
+
+    async init() {
+      await this.refresh();
+      await this.checkPipelineStatus();
+      setInterval(()=>this.refresh(), 30000);
+    },
+
+    async checkPipelineStatus() {
+      try {
+        const s = await this.getJSON('/api/pipeline/status');
+        const wasRunning = this.pipelineRunning;
+        this.pipelineRunning = s.running;
+        if (wasRunning && !s.running) {
+          // just finished — refresh data
+          await this.refresh();
+          clearInterval(this._pollTimer);
+          this._pollTimer = null;
+        }
+      } catch(e) {}
+    },
+
+    async runPipeline() {
+      if (this.pipelineRunning) return;
+      try {
+        const r = await fetch('/api/pipeline/run', { method: 'POST' });
+        if (r.ok) {
+          this.pipelineRunning = true;
+          // poll every 10s until done
+          this._pollTimer = setInterval(()=>this.checkPipelineStatus(), 10000);
+        } else {
+          const d = await r.json();
+          this.errorMsg = d.detail || 'Failed to start pipeline';
+        }
+      } catch(e) { this.errorMsg = 'Failed to start pipeline'; }
+    },
+
+    async getJSON(url) {
+      const r = await fetch(url, { cache: 'no-store' });
+      if (!r.ok) throw new Error(url + ' → HTTP ' + r.status);
+      return await r.json();
+    },
 
     async refresh() {
       this.loading = true;
+      this.errorMsg = '';
       try {
-        const [s, pl, p] = await Promise.all([
-          fetch('/api/stats').then(r=>r.json()),
-          fetch('/api/pipeline').then(r=>r.json()),
-          fetch('/api/pending').then(r=>r.json()),
-        ]);
-        this.stats = s;
-        this.pipeline = pl;
-        this.pending = p.map(d=>({...d, _loading:false, _toast:'', _toastType:'', _editing:false, _editBody:d.body, _done:false}));
+        // Independent fetches — one failure doesn't blank everything
+        try { this.stats = await this.getJSON('/api/stats'); }
+        catch (e) { this.errorMsg = 'stats: ' + e.message; console.error(e); }
+
+        try { this.pipeline = await this.getJSON('/api/pipeline'); }
+        catch (e) { this.errorMsg = 'pipeline: ' + e.message; console.error(e); }
+
+        try {
+          const p = await this.getJSON('/api/pending');
+          this.pending = p.map(d=>({...d, _loading:false, _toast:'', _toastType:'', _editing:false, _editBody:d.body, _done:false}));
+        } catch (e) { this.errorMsg = 'pending: ' + e.message; console.error(e); }
+
         this.lastRefresh = 'Updated ' + new Date().toLocaleTimeString();
       } finally { this.loading = false; }
     },
@@ -583,7 +703,8 @@ def run():
     import uvicorn
     port = int(os.getenv("DASHBOARD_PORT", "8080"))
     print(f"\n🚀  Dashboard → http://localhost:{port}\n")
-    uvicorn.run("dashboard.app:app", host="0.0.0.0", port=port, reload=True)
+    dev_mode = os.getenv("DASHBOARD_DEV", "false").lower() == "true"
+    uvicorn.run("dashboard.app:app", host="0.0.0.0", port=port, reload=dev_mode)
 
 
 if __name__ == "__main__":

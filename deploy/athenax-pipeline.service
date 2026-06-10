@@ -13,6 +13,10 @@ Restart=on-failure
 RestartSec=60
 StandardOutput=journal
 StandardError=journal
+# 1 GB RAM optimisation — pipeline peaks at ~800 MB; swap handles the rest
+MemoryMax=900M
+OOMPolicy=continue
+Nice=10
 
 [Install]
 WantedBy=multi-user.target
