@@ -89,21 +89,8 @@ cp "$DEPLOY_DIR/nginx-dashboard.conf" /etc/nginx/sites-available/athenax-dashboa
 ln -sf /etc/nginx/sites-available/athenax-dashboard /etc/nginx/sites-enabled/athenax-dashboard
 rm -f /etc/nginx/sites-enabled/default
 
-# Tune nginx for low-RAM: 1 worker, small buffers
-cat > /etc/nginx/conf.d/low-memory.conf << 'NGINXEOF'
-worker_processes 1;
-worker_rlimit_nofile 512;
-events { worker_connections 256; }
-http {
-    client_body_buffer_size    8k;
-    client_header_buffer_size  1k;
-    client_max_body_size       1m;
-    large_client_header_buffers 2 1k;
-    keepalive_timeout 15;
-    gzip on;
-    gzip_types text/plain application/json text/html;
-}
-NGINXEOF
+# Tune nginx for low-RAM: 1 worker process
+sed -i 's/worker_processes auto;/worker_processes 1;/' /etc/nginx/nginx.conf
 
 nginx -t && systemctl enable nginx && systemctl reload nginx
 
