@@ -64,7 +64,8 @@ def stats():
             "total_leads":  conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0],
             "evaluations":  conn.execute("SELECT COUNT(*) FROM evaluations").fetchone()[0],
             "pending":      conn.execute("SELECT COUNT(*) FROM outreach_drafts WHERE status='pending'").fetchone()[0],
-            "approved":     conn.execute("SELECT COUNT(*) FROM outreach_drafts WHERE status='approved'").fetchone()[0],
+            "sent":         conn.execute("SELECT COUNT(*) FROM outreach_drafts WHERE status='approved'").fetchone()[0],
+            "responded":    conn.execute("SELECT COUNT(*) FROM outreach_drafts WHERE status='responded'").fetchone()[0],
             "rejected":     conn.execute("SELECT COUNT(*) FROM outreach_drafts WHERE status='rejected'").fetchone()[0],
         }
 
@@ -137,10 +138,10 @@ def trigger_run():
     return {"started": True}
 
 
-@app.get("/api/pending")
-def pending_drafts():
+def _fetch_drafts(statuses: list[str]) -> list[dict]:
+    placeholders = ",".join("?" * len(statuses))
     with _db() as conn:
-        rows = conn.execute("""
+        rows = conn.execute(f"""
             SELECT od.id, od.channel, od.subject, od.body, od.status, od.created_at,
                    l.name AS lead_name, l.url AS lead_url, l.source AS lead_source,
                    l.twitter_handle, l.github_stars, l.commits_last_30d,
@@ -151,9 +152,9 @@ def pending_drafts():
             FROM outreach_drafts od
             JOIN leads       l ON od.lead_id       = l.id
             JOIN evaluations e ON od.evaluation_id = e.id
-            WHERE od.status = 'pending'
+            WHERE od.status IN ({placeholders})
             ORDER BY e.compatibility_score DESC
-        """).fetchall()
+        """, statuses).fetchall()
     result = []
     for r in rows:
         d = dict(r)
@@ -166,13 +167,41 @@ def pending_drafts():
     return result
 
 
+@app.get("/api/pending")
+def pending_drafts():
+    return _fetch_drafts(["pending"])
+
+
+@app.get("/api/sent")
+def sent_drafts():
+    """Approved drafts (sent, awaiting response)."""
+    return _fetch_drafts(["approved"])
+
+
 @app.post("/api/drafts/{draft_id}/approve")
 def approve(draft_id: str):
+    """Mark draft as approved (= sent). Does NOT push to backend yet."""
+    with _db() as conn:
+        if not conn.execute("SELECT id FROM outreach_drafts WHERE id=?", (draft_id,)).fetchone():
+            raise HTTPException(status_code=404, detail="Draft not found")
+        conn.execute(
+            "UPDATE outreach_drafts SET status='approved', approved_at=? WHERE id=?",
+            (datetime.now(timezone.utc).isoformat(), draft_id),
+        )
+        conn.commit()
+    return {"status": "approved"}
+
+
+@app.post("/api/drafts/{draft_id}/responded")
+def responded(draft_id: str):
+    """Mark draft as responded → push project to AthenaX backend."""
     with _db() as conn:
         row = conn.execute("""
             SELECT od.id, od.lead_id, od.evaluation_id, od.channel, od.subject, od.body,
                    l.name AS lead_name, l.url AS lead_url, l.source AS lead_source,
-                   l.tech_stack, l.twitter_handle, l.remote_lead_id,
+                   l.sector, l.twitter_handle, l.github_stars, l.commits_last_30d,
+                   l.twitter_followers, l.vc_backing, l.funding_stage,
+                   l.description, l.remote_lead_id,
                    e.compatibility_score, e.nounish_traits,
                    e.reason_for_partnership, e.listing_fit_notes
             FROM outreach_drafts od
@@ -182,11 +211,42 @@ def approve(draft_id: str):
         """, (draft_id,)).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Draft not found")
-    from athenax.cli.review import _approve
+
+    d = dict(row)
+    lead_id = d["lead_id"]
+
     from athenax.api.athenax_client import AthenaXClient
+    client = AthenaXClient()
+
+    # Check if already pushed
+    with _db() as conn:
+        lead = dict(conn.execute("SELECT * FROM leads WHERE id=?", (lead_id,)).fetchone())
+
+    if lead.get("remote_lead_id"):
+        # Already in backend — just mark responded
+        with _db() as conn:
+            conn.execute("UPDATE outreach_drafts SET status='responded' WHERE id=?", (draft_id,))
+            conn.commit()
+        return {"status": "responded", "remote_id": lead["remote_lead_id"]}
+
+    # Push to AthenaX backend
     try:
-        _approve(dict(row), AthenaXClient())
-        return {"status": "approved"}
+        category_id = client.resolve_category_id(lead.get("sector", ""))
+        existing = client.get_product_by_name(lead.get("name", ""))
+        if existing:
+            remote_id = str(existing["id"])
+        else:
+            eval_row = {"reason_for_partnership": d.get("reason_for_partnership", ""),
+                        "listing_fit_notes": d.get("listing_fit_notes", ""),
+                        "nounish_traits": d.get("nounish_traits", "[]"),
+                        "compatibility_score": d.get("compatibility_score")}
+            remote_id = client.push_product(lead, eval_row, category_id)
+
+        with _db() as conn:
+            conn.execute("UPDATE leads SET remote_lead_id=? WHERE id=?", (remote_id, lead_id))
+            conn.execute("UPDATE outreach_drafts SET status='responded' WHERE id=?", (draft_id,))
+            conn.commit()
+        return {"status": "responded", "remote_id": remote_id}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
@@ -235,9 +295,10 @@ HTML = r"""<!DOCTYPE html>
     .source-web     { background:#faf5ff; color:#7e22ce; }
     .ch-twitter     { background:#e0f2fe; color:#0369a1; }
     .ch-email       { background:#f0fdf4; color:#15803d; }
-    .status-pending  { background:#fefce8; color:#a16207; }
-    .status-approved { background:#f0fdf4; color:#15803d; }
-    .status-rejected { background:#fef2f2; color:#b91c1c; }
+    .status-pending   { background:#fefce8; color:#a16207; }
+    .status-approved  { background:#eff6ff; color:#1d4ed8; }
+    .status-responded { background:#f0fdf4; color:#15803d; }
+    .status-rejected  { background:#fef2f2; color:#b91c1c; }
   </style>
 </head>
 <body class="bg-slate-50 min-h-screen" x-data="app()" x-init="init()">
@@ -284,7 +345,7 @@ HTML = r"""<!DOCTYPE html>
 
 <!-- Stats bar -->
 <div class="max-w-screen-xl mx-auto px-6 mt-5">
-  <div class="grid grid-cols-5 gap-3">
+  <div class="grid grid-cols-6 gap-3">
     <template x-for="s in statCards" :key="s.label">
       <div class="bg-white rounded-xl border border-slate-200 px-4 py-3 fade">
         <p class="text-xs text-slate-500 font-medium" x-text="s.label"></p>
@@ -453,7 +514,9 @@ HTML = r"""<!DOCTYPE html>
 
 <!-- ════════════ REVIEW TAB ════════════ -->
 <div class="max-w-screen-xl mx-auto px-6 mt-5 pb-16" x-show="tab==='review'" x-cloak>
-  <div x-show="pending.length===0 && !loading"
+
+  <!-- Pending drafts -->
+  <div x-show="pending.length===0 && sent.length===0 && !loading"
        class="bg-white rounded-xl border border-slate-200 p-16 text-center fade">
     <div class="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mx-auto">
       <svg class="w-6 h-6 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -462,6 +525,49 @@ HTML = r"""<!DOCTYPE html>
     </div>
     <p class="mt-3 font-medium text-slate-500">No pending drafts</p>
     <p class="text-sm text-slate-400 mt-1">Run the pipeline to generate outreach drafts.</p>
+  </div>
+
+  <!-- Section: Sent — awaiting response -->
+  <div x-show="sent.length>0" class="mb-6">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-xs font-bold text-blue-600 uppercase tracking-wide">✉ Sent — Awaiting Response</span>
+      <span class="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full font-bold" x-text="sent.filter(d=>!d._done).length"></span>
+    </div>
+    <div class="space-y-3">
+      <template x-for="d in sent" :key="d.id">
+        <div class="bg-white rounded-xl border border-blue-100 overflow-hidden fade" x-show="!d._done">
+          <div class="px-5 py-3 flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
+                 :class="scoreRing(d.compatibility_score)" x-text="d.compatibility_score||'—'"></div>
+            <div class="flex-1 min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="font-semibold text-slate-900 text-sm" x-text="d.lead_name"></span>
+                <span class="text-xs px-1.5 py-0.5 rounded font-medium"
+                      :class="d.channel==='twitter_dm' ? 'ch-twitter' : 'ch-email'"
+                      x-text="d.channel==='twitter_dm' ? '𝕏 Twitter DM' : '✉ Email'"></span>
+              </div>
+              <p x-show="d.subject" class="text-xs text-slate-400 mt-0.5">Subject: <span x-text="d.subject"></span></p>
+            </div>
+            <button @click="markResponded(d)" :disabled="d._loading"
+              class="flex-shrink-0 text-xs px-4 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5">
+              <span x-show="!d._loading">🎉 Responded</span>
+              <span x-show="d._loading">Pushing…</span>
+            </button>
+          </div>
+          <div x-show="d._toast" x-transition class="px-5 py-2 text-xs font-medium"
+               :class="d._toastType==='ok' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'"
+               x-text="d._toast"></div>
+        </div>
+      </template>
+    </div>
+  </div>
+
+  <!-- Section: Pending review -->
+  <div x-show="pending.length>0" class="mb-3">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-xs font-bold text-amber-600 uppercase tracking-wide">⏳ Pending Review</span>
+      <span class="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-bold" x-text="pending.filter(d=>!d._done).length"></span>
+    </div>
   </div>
 
   <div class="space-y-4">
@@ -523,12 +629,12 @@ HTML = r"""<!DOCTYPE html>
             </button>
             <button @click="approveDraft(d)" :disabled="d._loading"
               class="text-xs px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5">
-              <span x-show="!d._loading">✓ Approve & Push</span>
+              <span x-show="!d._loading">✓ Approve — Mark as Sent</span>
               <span x-show="d._loading" class="flex items-center gap-1">
                 <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                </svg>Pushing…
+                </svg>Saving…
               </span>
             </button>
           </div>
@@ -548,9 +654,10 @@ function app() {
     tab: 'pipeline',
     loading: false,
     lastRefresh: '',
-    stats: { total_leads:0, evaluations:0, pending:0, approved:0, rejected:0 },
+    stats: { total_leads:0, evaluations:0, pending:0, sent:0, responded:0, rejected:0 },
     pipeline: { scout:[], evaluator:[], writer:[] },
     pending: [],
+    sent: [],
     pipelineRunning: false,
     _pollTimer: null,
 
@@ -572,7 +679,8 @@ function app() {
         { label:'Total Leads',    value:this.stats.total_leads,  color:'text-slate-800' },
         { label:'Evaluated',      value:this.stats.evaluations,  color:'text-indigo-600' },
         { label:'Pending Review', value:this.stats.pending,      color:'text-amber-600' },
-        { label:'Approved',       value:this.stats.approved,     color:'text-green-600' },
+        { label:'Sent',           value:this.stats.sent,         color:'text-blue-600' },
+        { label:'Responded',      value:this.stats.responded,    color:'text-green-600' },
         { label:'Rejected',       value:this.stats.rejected,     color:'text-red-500' },
       ];
     },
@@ -636,6 +744,11 @@ function app() {
           this.pending = p.map(d=>({...d, _loading:false, _toast:'', _toastType:'', _editing:false, _editBody:d.body, _done:false}));
         } catch (e) { this.errorMsg = 'pending: ' + e.message; console.error(e); }
 
+        try {
+          const s = await this.getJSON('/api/sent');
+          this.sent = s.map(d=>({...d, _loading:false, _toast:'', _toastType:'', _done:false}));
+        } catch (e) { console.error(e); }
+
         this.lastRefresh = 'Updated ' + new Date().toLocaleTimeString();
       } finally { this.loading = false; }
     },
@@ -667,12 +780,12 @@ function app() {
       d._loading = true;
       try {
         const r = await fetch(`/api/drafts/${d.id}/approve`,{method:'POST'});
-        const data = await r.json();
         if (r.ok) {
-          d._toast='✓ Approved & pushed to AthenaX'; d._toastType='ok';
-          setTimeout(()=>{ d._done=true; this.stats.pending--; this.stats.approved++; },1500);
+          d._toast='✓ Marked as sent'; d._toastType='ok';
+          setTimeout(()=>{ d._done=true; this.stats.pending--; this.stats.sent++; this.refresh(); },1500);
         } else {
-          d._toast='✗ '+(data.detail||'Push failed'); d._toastType='err';
+          const data = await r.json();
+          d._toast='✗ '+(data.detail||'Error'); d._toastType='err';
           setTimeout(()=>d._toast='',4000);
         }
       } finally { d._loading=false; }
@@ -685,6 +798,21 @@ function app() {
         if (r.ok) {
           d._toast='Rejected'; d._toastType='err';
           setTimeout(()=>{ d._done=true; this.stats.pending--; this.stats.rejected++; },800);
+        }
+      } finally { d._loading=false; }
+    },
+
+    async markResponded(d) {
+      d._loading = true;
+      try {
+        const r = await fetch(`/api/drafts/${d.id}/responded`,{method:'POST'});
+        const data = await r.json();
+        if (r.ok) {
+          d._toast='🎉 Pushed to AthenaX!'; d._toastType='ok';
+          setTimeout(()=>{ d._done=true; this.stats.sent--; this.stats.responded++; },1500);
+        } else {
+          d._toast='✗ '+(data.detail||'Push failed'); d._toastType='err';
+          setTimeout(()=>d._toast='',4000);
         }
       } finally { d._loading=false; }
     },
