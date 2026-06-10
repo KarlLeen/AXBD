@@ -231,7 +231,13 @@ def _map_stage(raw: str | None) -> str | None:
 
 
 def _build_links(lead: dict) -> list[dict]:
-    """Build the links array for the API payload."""
+    """Build the links array for the API payload.
+
+    NOTE: Do NOT include linkType "website" here — the backend creates that
+    automatically from the top-level `url` field. Sending both causes a
+    UniqueViolationError on uq_product_links_product_link_type.
+    Only include: github, twitter, other (linkedin).
+    """
     links = []
     source = lead.get("source", "")
     url = lead.get("url", "") or ""
@@ -244,13 +250,6 @@ def _build_links(lead: dict) -> list[dict]:
         github_url = url
     if github_url:
         links.append({"linkType": "github", "url": github_url[:500]})
-
-    # Website (if different from GitHub)
-    homepage = lead.get("homepage") or lead.get("website_url")
-    if homepage and "github.com" not in homepage:
-        links.append({"linkType": "website", "url": homepage[:500]})
-    elif url and "github.com" not in url and source != "github":
-        links.append({"linkType": "website", "url": url[:500]})
 
     # Twitter/X
     handle = lead.get("twitter_handle")
@@ -273,21 +272,6 @@ def _build_desc(raw_desc: str, evaluation: dict, lead: dict | None = None) -> st
     parts = []
     if raw_desc:
         parts.append(raw_desc)
-
-    # Embed GitHub signals (no dedicated API field for these)
-    if lead:
-        signals = []
-        stars = lead.get("github_stars")
-        if stars:
-            signals.append(f"GitHub stars: {stars:,}")
-        commits = lead.get("commits_last_30d")
-        if commits is not None:
-            signals.append(f"commits/30d: {commits}")
-        followers = lead.get("twitter_followers")
-        if followers:
-            signals.append(f"Twitter followers: {followers:,}")
-        if signals:
-            parts.append("\n**Traction:** " + " · ".join(signals))
 
     # AthenaX evaluation notes
     reason = evaluation.get("reason_for_partnership", "")
