@@ -139,11 +139,20 @@ def _save_evaluations(evals: list, lead_id_map: dict[str, str]) -> dict[str, str
                 continue
             eval_id = str(uuid.uuid4())
             traits = ev.get("nounish_traits", [])
+            # Store full structured details for dashboard drill-down
+            details = {
+                k: ev.get(k)
+                for k in ("score_breakdown", "criteria_detail",
+                          "signal_boosters", "velocity_assessment",
+                          "project_type", "disqualifiers_checked",
+                          "minimum_requirements_met")
+            }
             conn.execute(
                 """INSERT INTO evaluations
                    (id, lead_id, compatibility_score, nounish_traits,
-                    reason_for_partnership, listing_fit_notes, created_at)
-                   VALUES (?,?,?,?,?,?,?)""",
+                    reason_for_partnership, listing_fit_notes,
+                    details_json, created_at)
+                   VALUES (?,?,?,?,?,?,?,?)""",
                 (
                     eval_id,
                     lead_id,
@@ -151,6 +160,7 @@ def _save_evaluations(evals: list, lead_id_map: dict[str, str]) -> dict[str, str
                     json.dumps(traits) if isinstance(traits, list) else traits,
                     ev.get("reason_for_partnership", ""),
                     ev.get("listing_fit_notes", ""),
+                    json.dumps(details),
                     _now(),
                 ),
             )

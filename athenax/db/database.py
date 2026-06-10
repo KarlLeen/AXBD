@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS evaluations (
     nounish_traits          TEXT,
     reason_for_partnership  TEXT NOT NULL,
     listing_fit_notes       TEXT,
+    details_json            TEXT,
     created_at              TEXT NOT NULL,
     FOREIGN KEY (lead_id) REFERENCES leads(id)
 );

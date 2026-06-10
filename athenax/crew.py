@@ -298,6 +298,16 @@ Score based on tier (Tier 1 = 85–100, Tier 2 = 70–84), sector leadership, an
 Aim for ~3–4 new projects and ~1–2 established anchors in your top 5.
 Rank by score. Discard anything below 55.
 
+━━━ STEP 5 — PRODUCE DETAILED EVALUATION ━━━
+For each of the top 5, produce a full criteria breakdown so the reviewer can
+see exactly why it scored the way it did. If the Scout did not provide a field
+(e.g. github_stars is null) and you need it to evaluate, call the github_search
+or coingecko_search tool to fetch it. Do not leave a criterion unevaluated.
+
+For each criterion record:
+• met: true / false / null (null = data unavailable after attempting to fetch)
+• note: short factual note (the actual data or why it's missing)
+
 Return your results as a JSON array.
 """,
         expected_output=(
@@ -311,7 +321,23 @@ Return your results as a JSON array.
             "velocity_assessment (1 sentence on growth trajectory), "
             "nounish_traits (string array — keep for Nouns DAO context), "
             "reason_for_partnership (1–2 sentences — why AthenaX incubation/distribution fits this project), "
-            "listing_fit_notes (1 sentence — which AthenaX value prop is most relevant: capital alignment, distribution, narrative, or ecosystem access)."
+            "listing_fit_notes (1 sentence — which AthenaX value prop is most relevant: capital alignment, distribution, narrative, or ecosystem access), "
+            "score_breakdown (object): { "
+            "  base_score (int — 40 for new if minimums met, or tier-based for established), "
+            "  booster_points (int — sum of signal booster points awarded), "
+            "  velocity_multiplier (float — 1.0–1.3), "
+            "  boosters_detail (array of {signal, points, note}) "
+            "}, "
+            "criteria_detail (object with per-criterion result): { "
+            "  working_product: {met, note}, "
+            "  website: {met, note}, "
+            "  github: {met, stars, commits_last_30d, note}, "
+            "  twitter: {met, followers, note}, "
+            "  team: {met, note}, "
+            "  sector_fit: {met, note}, "
+            "  active_development: {met, note}, "
+            "  market_presence: {met, note} "
+            "}."
         ),
         agent=evaluator,
         context=[scout_task],

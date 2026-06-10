@@ -88,7 +88,7 @@ def pipeline():
         evaluator = [dict(r) for r in conn.execute("""
             SELECT e.id, e.lead_id, e.compatibility_score,
                    e.nounish_traits, e.reason_for_partnership,
-                   e.listing_fit_notes, e.created_at,
+                   e.listing_fit_notes, e.details_json, e.created_at,
                    l.name AS lead_name, l.url AS lead_url, l.source AS lead_source,
                    l.github_stars, l.commits_last_30d
             FROM evaluations e
@@ -114,6 +114,12 @@ def pipeline():
         if e["nounish_traits"]:
             try: e["nounish_traits"] = json.loads(e["nounish_traits"])
             except: e["nounish_traits"] = []
+        if e.get("details_json"):
+            try: e["details"] = json.loads(e["details_json"])
+            except: e["details"] = {}
+        else:
+            e["details"] = {}
+        del e["details_json"]
     for s in scout:
         if s["tech_stack"]:
             try: s["tech_stack"] = json.loads(s["tech_stack"])
@@ -281,6 +287,7 @@ HTML = r"""<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>AthenaX Partnership Agent</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
   <style>
@@ -451,32 +458,93 @@ HTML = r"""<!DOCTYPE html>
         No evaluations yet
       </div>
       <template x-for="e in pipeline.evaluator" :key="e.id">
-        <div class="bg-white rounded-xl border border-slate-200 p-3.5 hover:border-indigo-200 transition-colors">
-          <!-- Score + name -->
-          <div class="flex items-center gap-2.5 mb-2">
-            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
-                 :class="scoreRing(e.compatibility_score)"
-                 x-text="e.compatibility_score"></div>
-            <div class="min-w-0">
-              <a :href="e.lead_url" target="_blank"
-                 class="text-sm font-semibold text-slate-800 hover:text-indigo-600 truncate block"
-                 x-text="e.lead_name"></a>
-              <span class="text-xs px-1.5 py-0.5 rounded font-medium"
-                    :class="sourceClass(e.lead_source)" x-text="e.lead_source"></span>
+        <div class="bg-white rounded-xl border border-slate-200 hover:border-indigo-200 transition-colors" x-data="{open:false}">
+          <!-- Header (always visible) -->
+          <div class="p-3.5 cursor-pointer" @click="open=!open">
+            <div class="flex items-center gap-2.5">
+              <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0"
+                   :class="scoreRing(e.compatibility_score)"
+                   x-text="e.compatibility_score"></div>
+              <div class="min-w-0 flex-1">
+                <a :href="e.lead_url" target="_blank" @click.stop
+                   class="text-sm font-semibold text-slate-800 hover:text-indigo-600 truncate block"
+                   x-text="e.lead_name"></a>
+                <div class="flex items-center gap-1.5 mt-0.5">
+                  <span class="text-xs px-1.5 py-0.5 rounded font-medium"
+                        :class="sourceClass(e.lead_source)" x-text="e.lead_source"></span>
+                  <span x-show="e.details?.project_type"
+                        class="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 capitalize"
+                        x-text="e.details?.project_type"></span>
+                </div>
+              </div>
+              <svg class="w-4 h-4 text-slate-400 flex-shrink-0 transition-transform"
+                   :class="open && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
             </div>
+            <p class="text-xs text-slate-500 mt-2 leading-relaxed line-clamp-2" x-text="e.reason_for_partnership"></p>
           </div>
-          <!-- Reason -->
-          <p class="text-xs text-slate-600 leading-relaxed" x-text="e.reason_for_partnership"></p>
-          <!-- Traits -->
-          <div x-show="e.nounish_traits?.length" class="flex flex-wrap gap-1 mt-2">
-            <template x-for="t in (e.nounish_traits||[])" :key="t">
-              <span class="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded" x-text="t"></span>
-            </template>
+
+          <!-- Expandable detail -->
+          <div x-show="open" x-collapse class="border-t border-slate-100 px-3.5 pb-3.5 pt-3 space-y-3">
+
+            <!-- Score breakdown -->
+            <div x-show="e.details?.score_breakdown">
+              <p class="text-xs font-semibold text-slate-700 mb-1.5">Score Breakdown</p>
+              <div class="grid grid-cols-3 gap-2 text-center">
+                <div class="bg-slate-50 rounded-lg py-2">
+                  <p class="text-xs text-slate-400">Base</p>
+                  <p class="text-sm font-bold text-slate-700" x-text="e.details?.score_breakdown?.base_score ?? '—'"></p>
+                </div>
+                <div class="bg-slate-50 rounded-lg py-2">
+                  <p class="text-xs text-slate-400">Boosters</p>
+                  <p class="text-sm font-bold text-indigo-600" x-text="e.details?.score_breakdown?.booster_points ? '+'+e.details.score_breakdown.booster_points : '—'"></p>
+                </div>
+                <div class="bg-slate-50 rounded-lg py-2">
+                  <p class="text-xs text-slate-400">Velocity ×</p>
+                  <p class="text-sm font-bold text-emerald-600" x-text="e.details?.score_breakdown?.velocity_multiplier ?? '—'"></p>
+                </div>
+              </div>
+              <!-- Boosters detail -->
+              <div x-show="e.details?.score_breakdown?.boosters_detail?.length" class="mt-2 space-y-1">
+                <template x-for="b in (e.details?.score_breakdown?.boosters_detail||[])" :key="b.signal">
+                  <div class="flex items-center gap-2 text-xs">
+                    <span class="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-medium" x-text="'+'+b.points"></span>
+                    <span class="font-medium text-slate-700" x-text="b.signal"></span>
+                    <span class="text-slate-400 truncate" x-text="b.note"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Criteria checklist -->
+            <div x-show="e.details?.criteria_detail">
+              <p class="text-xs font-semibold text-slate-700 mb-1.5">Criteria Checklist</p>
+              <div class="space-y-1">
+                <template x-for="[key, val] in Object.entries(e.details?.criteria_detail||{})" :key="key">
+                  <div class="flex items-start gap-2 text-xs">
+                    <span class="flex-shrink-0 mt-0.5"
+                          :class="val?.met===true ? 'text-green-500' : val?.met===false ? 'text-red-400' : 'text-slate-300'"
+                          x-text="val?.met===true ? '✓' : val?.met===false ? '✗' : '?'"></span>
+                    <span class="font-medium text-slate-600 capitalize flex-shrink-0 w-28"
+                          x-text="key.replace(/_/g,' ')"></span>
+                    <span class="text-slate-400 leading-relaxed" x-text="val?.note || (val?.followers ? val.followers.toLocaleString()+' followers' : val?.stars ? val.stars.toLocaleString()+' stars' : '—')"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <!-- Velocity -->
+            <div x-show="e.details?.velocity_assessment">
+              <p class="text-xs font-semibold text-slate-700 mb-1">Velocity</p>
+              <p class="text-xs text-slate-500 italic" x-text="e.details?.velocity_assessment"></p>
+            </div>
+
+            <!-- Listing fit -->
+            <p x-show="e.listing_fit_notes"
+               class="text-xs text-slate-400 border-t border-slate-100 pt-2"
+               x-text="e.listing_fit_notes"></p>
           </div>
-          <!-- Notes -->
-          <p x-show="e.listing_fit_notes"
-             class="mt-2 text-xs text-slate-400 border-t border-slate-100 pt-2"
-             x-text="e.listing_fit_notes"></p>
         </div>
       </template>
     </div>
