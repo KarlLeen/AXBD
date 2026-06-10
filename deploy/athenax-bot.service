@@ -8,6 +8,7 @@ Type=simple
 User=athenax
 WorkingDirectory=/opt/athenax
 EnvironmentFile=/opt/athenax/.env
+Environment=HOME=/opt/athenax
 ExecStart=/opt/athenax/.venv/bin/athenax bot
 Restart=on-failure
 RestartSec=10
