@@ -16,6 +16,7 @@ Setup:
 import logging
 import os
 
+from pathlib import Path
 from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -25,7 +26,7 @@ from telegram.ext import (
     ContextTypes,
 )
 
-load_dotenv()
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

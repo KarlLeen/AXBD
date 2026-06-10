@@ -3,8 +3,13 @@ import json
 import uuid
 from datetime import datetime, timezone
 
+from pathlib import Path
 from dotenv import load_dotenv
-load_dotenv()
+
+# Load .env from the project root regardless of where the command is run from.
+# This ensures DEEPSEEK_API_KEY etc. are available when running via SSH from any directory.
+_PROJECT_ROOT = Path(__file__).parent.parent
+load_dotenv(_PROJECT_ROOT / ".env")
 
 from athenax.db.database import get_connection, init_db
 from athenax.crew import build_crew

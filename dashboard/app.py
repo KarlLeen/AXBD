@@ -4,11 +4,12 @@ import os
 import threading
 from datetime import datetime, timezone
 
+from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
-load_dotenv()
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 app = FastAPI(title="AthenaX Dashboard", docs_url=None, redoc_url=None)
 
