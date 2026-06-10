@@ -83,19 +83,20 @@ def _save_leads(leads: list) -> dict[str, str]:
                 lead_id = str(uuid.uuid4())
                 conn.execute(
                     """INSERT INTO leads
-                       (id, source, name, url, description,
+                       (id, source, name, url, description, sector,
                         github_stars, github_forks, github_contributors,
                         commits_last_30d, tech_stack,
                         linkedin_profile, linkedin_recent_post,
                         twitter_handle, twitter_followers, twitter_recent_tweet,
                         created_at, updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         lead_id,
                         lead.get("source", "unknown"),
                         lead.get("name", ""),
                         url,
                         lead.get("description", ""),
+                        lead.get("sector"),
                         lead.get("github_stars"),
                         lead.get("github_forks"),
                         lead.get("github_contributors"),

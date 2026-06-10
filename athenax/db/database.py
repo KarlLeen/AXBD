@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS leads (
     name                  TEXT NOT NULL,
     url                   TEXT NOT NULL UNIQUE,
     description           TEXT,
+    sector                TEXT,
     github_stars          INTEGER,
     github_forks          INTEGER,
     github_contributors   INTEGER,
