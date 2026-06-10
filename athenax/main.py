@@ -24,25 +24,18 @@ def _extract_json(text: str) -> list:
     import re
     # Strip markdown code fences
     text = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
-    # Find the outermost [ ... ]
+    # Use the stdlib decoder which correctly handles [ ] inside strings
     start = text.find("[")
     if start == -1:
         return []
-    depth, end = 0, -1
-    for i, ch in enumerate(text[start:], start):
-        if ch == "[":
-            depth += 1
-        elif ch == "]":
-            depth -= 1
-            if depth == 0:
-                end = i
-                break
-    if end == -1:
-        return []
+    decoder = json.JSONDecoder()
     try:
-        return json.loads(text[start : end + 1])
+        result, _ = decoder.raw_decode(text, start)
+        if isinstance(result, list):
+            return result
     except json.JSONDecodeError:
-        return []
+        pass
+    return []
 
 
 def _save_leads(leads: list) -> dict[str, str]:
