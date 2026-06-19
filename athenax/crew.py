@@ -223,13 +223,26 @@ For every lead:
              commits_last_30d, commits_last_90d, archived, tech_stack, homepage.
              If repo not found, record null for these fields.
 ② Twitter/X — search the project/company name to find their handle. Extract:
-              twitter_handle, follower count, most recent tweet text.
-              If not found, record null.
+              twitter_handle (main official handle), follower count, most recent tweet text.
+              ALSO search for BD/partnerships team members on Twitter:
+              Search "[project name] head of BD site:twitter.com" and
+              "[project name] partnerships site:twitter.com" and
+              "[project name] business development site:twitter.com".
+              Find 2–3 people who do BD/partnerships/growth for this project.
+              Record as bd_twitter_handles: array of {handle, name, role, followers}.
+              Include the main project handle in this array too (role: "official").
+              If no BD person found, just include the main handle with role "official".
 ③ LinkedIn  — search the company name on LinkedIn. Extract:
               linkedin_profile URL, most recent post or announcement.
               If not found, record null.
-④ Web (Serper) — search "[project name] funding announcement" and "[project name] site:twitter.com"
-                 to surface any VC backing, round details, or social presence not found above.
+④ Web (Serper) — search "[project name] funding announcement" and
+                 "[project name] partnerships BD contact" to surface VC backing and contact info.
+⑤ Contact email — Try to find a business contact / BD email for outreach:
+              Search "[project name] partnerships@" OR "[project name] bd@" OR
+              "[project name] hello@" OR check their GitHub README or website /contact page.
+              Common patterns to try: partnerships@[domain], bd@[domain], hello@[domain],
+              contact@[domain]. If you find a likely email, record it as contact_email.
+              If none found, record null. Do NOT guess — only record if you found evidence.
 
 THEN also collect:
 • Basic: name, URL, source (where it was originally found), description, sector
@@ -253,7 +266,11 @@ Return a single JSON array of ACTIVE leads only.
             "commits_last_30d (int or null), commits_last_90d (int or null), "
             "tech_stack (array or null), "
             "linkedin_profile, linkedin_recent_post, "
-            "twitter_handle, twitter_followers, twitter_recent_tweet, "
+            "twitter_handle (main official handle, string or null), "
+            "twitter_followers (int or null), twitter_recent_tweet (string or null), "
+            "bd_twitter_handles (array of {handle, name, role, followers} — BD/partnerships "
+            "people plus official account; 2–4 entries preferred, null if none found), "
+            "contact_email (string or null — best BD/partnerships email found, null if not found), "
             "vc_backing (string or null), funding_stage (string or null), "
             "velocity_notes (string or null — any evidence of rapid recent growth), "
             "conference_origin (string or null — e.g. 'ETHGlobal winner', 'YC W26')."
@@ -372,6 +389,10 @@ speed of onboarding or short-term token launches.
   a conference talk, or a hackathon win.
 • Choose channel: Twitter DM if they have active Twitter presence (≥1k followers);
   email if LinkedIn is stronger or no Twitter.
+• For Twitter DMs: target the most relevant BD/partnerships person from bd_twitter_handles
+  (role contains "BD", "partnerships", "growth", "business development") rather than the
+  official project account. If no BD person found, use the main project handle.
+  Include the chosen handle in the output as target_handle.
 • Twitter DMs: max 280 characters, punchy, peer-to-peer.
 • Emails: subject line required. Body under 150 words.
 • Tone: builder-to-builder, curious, direct. Never corporate or salesy.
@@ -390,7 +411,9 @@ Return 5 draft objects in JSON.
         expected_output=(
             "A JSON array of exactly 5 objects, each with: "
             "lead_name, channel ('twitter_dm' or 'email'), "
-            "subject (string or null for DMs), body (the message text)."
+            "subject (string or null for DMs), body (the message text), "
+            "target_handle (Twitter handle chosen for DMs, null for email), "
+            "target_email (contact email for email channel, null for DMs)."
         ),
         agent=writer,
         context=[evaluator_task],

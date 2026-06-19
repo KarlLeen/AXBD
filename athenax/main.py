@@ -79,6 +79,8 @@ def _save_leads(leads: list) -> dict[str, str]:
             else:
                 # New URL — insert fresh row
                 lead_id = str(uuid.uuid4())
+                bd_handles = lead.get("bd_twitter_handles")
+                bd_handles_json = json.dumps(bd_handles) if isinstance(bd_handles, list) else bd_handles
                 conn.execute(
                     """INSERT INTO leads
                        (id, source, name, url, description, sector,
@@ -86,8 +88,9 @@ def _save_leads(leads: list) -> dict[str, str]:
                         commits_last_30d, tech_stack,
                         linkedin_profile, linkedin_recent_post,
                         twitter_handle, twitter_followers, twitter_recent_tweet,
+                        bd_twitter_handles, contact_email,
                         created_at, updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         lead_id,
                         lead.get("source", "unknown"),
@@ -105,6 +108,8 @@ def _save_leads(leads: list) -> dict[str, str]:
                         lead.get("twitter_handle"),
                         lead.get("twitter_followers"),
                         lead.get("twitter_recent_tweet"),
+                        bd_handles_json,
+                        lead.get("contact_email"),
                         now,
                         now,
                     ),
@@ -183,8 +188,9 @@ def _save_drafts(drafts: list, lead_id_map: dict[str, str], eval_id_map: dict[st
                 continue
             conn.execute(
                 """INSERT INTO outreach_drafts
-                   (id, lead_id, evaluation_id, channel, subject, body, status, created_at)
-                   VALUES (?,?,?,?,?,?,'pending',?)""",
+                   (id, lead_id, evaluation_id, channel, subject, body,
+                    target_handle, recipient_email, status, created_at)
+                   VALUES (?,?,?,?,?,?,?,?,'pending',?)""",
                 (
                     str(uuid.uuid4()),
                     lead_id,
@@ -192,6 +198,8 @@ def _save_drafts(drafts: list, lead_id_map: dict[str, str], eval_id_map: dict[st
                     draft.get("channel", "email"),
                     draft.get("subject"),
                     draft.get("body", ""),
+                    draft.get("target_handle"),
+                    draft.get("target_email"),
                     _now(),
                 ),
             )
@@ -332,9 +340,8 @@ def main() -> None:
     sub.add_parser("dashboard", help="Open the web admin dashboard")
     sub.add_parser("bot", help="Start the Telegram admin bot")
 
-    cron_p = sub.add_parser("schedule", help="Run on a weekly cron (blocks)")
-    cron_p.add_argument("--day", default="monday")
-    cron_p.add_argument("--time", default="09:00")
+    cron_p = sub.add_parser("schedule", help="Run pipeline on a repeating interval (blocks)")
+    cron_p.add_argument("--hours", type=int, default=8, help="Run every N hours (default: 8)")
 
     args = parser.parse_args()
 
@@ -353,8 +360,9 @@ def main() -> None:
         import schedule as sched
         import time
 
-        getattr(sched.every(), args.day).at(args.time).do(run_pipeline)
-        print(f"Scheduled: every {args.day} at {args.time} UTC")
+        sched.every(args.hours).hours.do(run_pipeline)
+        print(f"Scheduled: every {args.hours} hours. Running now for the first time...")
+        run_pipeline()
         while True:
             sched.run_pending()
             time.sleep(60)

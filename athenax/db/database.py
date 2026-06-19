@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS leads (
     twitter_handle        TEXT,
     twitter_followers     INTEGER,
     twitter_recent_tweet  TEXT,
+    bd_twitter_handles    TEXT,
+    contact_email         TEXT,
     remote_lead_id        TEXT,
     created_at            TEXT NOT NULL,
     updated_at            TEXT NOT NULL
@@ -92,6 +94,16 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE outreach_drafts ADD COLUMN remote_outreach_id TEXT")
     if "recipient_email" not in od_cols:
         conn.execute("ALTER TABLE outreach_drafts ADD COLUMN recipient_email TEXT")
+    if "target_handle" not in od_cols:
+        conn.execute("ALTER TABLE outreach_drafts ADD COLUMN target_handle TEXT")
+
+    lead_cols = {row[1] for row in conn.execute("PRAGMA table_info(leads)").fetchall()}
+    for col, definition in [
+        ("bd_twitter_handles", "TEXT"),
+        ("contact_email",      "TEXT"),
+    ]:
+        if col not in lead_cols:
+            conn.execute(f"ALTER TABLE leads ADD COLUMN {col} {definition}")
 
     # Dedup: remove duplicate URLs (keep oldest record)
     conn.execute("""

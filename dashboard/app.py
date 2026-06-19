@@ -149,9 +149,10 @@ def _fetch_drafts(statuses: list[str]) -> list[dict]:
     with _db() as conn:
         rows = conn.execute(f"""
             SELECT od.id, od.channel, od.subject, od.body, od.status, od.created_at,
+                   od.target_handle, od.recipient_email,
                    l.name AS lead_name, l.url AS lead_url, l.source AS lead_source,
                    l.twitter_handle, l.github_stars, l.commits_last_30d,
-                   l.remote_lead_id,
+                   l.bd_twitter_handles, l.contact_email, l.remote_lead_id,
                    e.compatibility_score, e.nounish_traits,
                    e.reason_for_partnership, e.listing_fit_notes,
                    e.lead_id, e.id AS evaluation_id
@@ -718,10 +719,25 @@ HTML = r"""<!DOCTYPE html>
             class="w-full text-sm text-slate-700 bg-slate-50 rounded-lg p-4 border border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none"></textarea>
         </div>
 
+        <!-- BD Twitter handles (twitter_dm channel only) -->
+        <div x-show="d.channel==='twitter_dm' && d.bd_twitter_handles?.length" class="px-5 pb-3">
+          <p class="text-xs text-slate-500 font-medium mb-1.5">BD / Partnerships contacts</p>
+          <div class="flex flex-wrap gap-2">
+            <template x-for="h in (d.bd_twitter_handles||[])" :key="h.handle">
+              <a :href="'https://x.com/'+h.handle.replace('@','')" target="_blank"
+                 class="flex items-center gap-1.5 text-xs bg-sky-50 text-sky-700 border border-sky-200 rounded-lg px-2.5 py-1.5 hover:bg-sky-100 transition-colors">
+                <span class="font-semibold" x-text="h.handle"></span>
+                <span class="text-sky-500 capitalize" x-text="h.role"></span>
+                <span x-show="h.followers" class="text-sky-400" x-text="'· '+Number(h.followers).toLocaleString()"></span>
+              </a>
+            </template>
+          </div>
+        </div>
+
         <!-- Recipient email (email channel only) -->
         <div x-show="d.channel==='email'" class="px-5 pb-3">
           <label class="text-xs text-slate-500 font-medium">Recipient email</label>
-          <input x-model="d._recipientEmail" type="email" placeholder="founder@project.xyz"
+          <input x-model="d._recipientEmail" type="email" placeholder="bd@project.xyz"
             class="mt-1 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-200"/>
         </div>
 
@@ -856,7 +872,13 @@ function app() {
 
         try {
           const p = await this.getJSON('/api/pending');
-          this.pending = p.map(d=>({...d, _loading:false, _toast:'', _toastType:'', _editing:false, _editBody:d.body, _done:false, _recipientEmail:''}));
+          this.pending = p.map(d=>({
+            ...d,
+            _loading:false, _toast:'', _toastType:'', _editing:false,
+            _editBody:d.body, _done:false,
+            _recipientEmail: d.recipient_email || d.contact_email || '',
+            bd_twitter_handles: (() => { try { return JSON.parse(d.bd_twitter_handles||'null') || [] } catch(e) { return [] } })(),
+          }));
         } catch (e) { this.errorMsg = 'pending: ' + e.message; console.error(e); }
 
         try {
