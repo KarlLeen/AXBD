@@ -184,18 +184,58 @@ def sent_drafts():
     return _fetch_drafts(["approved"])
 
 
+def _send_email(to: str, subject: str, body: str) -> None:
+    """Send outreach email via SMTP (bd@athenax.co)."""
+    import smtplib
+    from email.message import EmailMessage
+
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "bd@athenax.co")
+    smtp_pass = os.getenv("SMTP_PASS", "")
+
+    msg = EmailMessage()
+    msg["From"] = f"Karl @ AthenaX <{smtp_user}>"
+    msg["To"] = to
+    msg["Subject"] = subject or "(no subject)"
+    msg.set_content(body)
+
+    with smtplib.SMTP(smtp_host, smtp_port) as s:
+        s.ehlo()
+        s.starttls()
+        s.login(smtp_user, smtp_pass)
+        s.send_message(msg)
+
+
 @app.post("/api/drafts/{draft_id}/approve")
-def approve(draft_id: str):
-    """Mark draft as approved (= sent). Does NOT push to backend yet."""
+def approve(draft_id: str, payload: dict = None):
+    """Send email (if email channel) then mark as approved."""
+    payload = payload or {}
+    recipient = (payload.get("recipient_email") or "").strip()
+
     with _db() as conn:
-        if not conn.execute("SELECT id FROM outreach_drafts WHERE id=?", (draft_id,)).fetchone():
+        row = conn.execute(
+            "SELECT channel, subject, body FROM outreach_drafts WHERE id=?", (draft_id,)
+        ).fetchone()
+        if not row:
             raise HTTPException(status_code=404, detail="Draft not found")
+        channel, subject, body = row["channel"], row["subject"], row["body"]
+
+    if channel == "email":
+        if not recipient:
+            raise HTTPException(status_code=400, detail="recipient_email required for email drafts")
+        try:
+            _send_email(recipient, subject or "", body)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"SMTP error: {exc}")
+
+    with _db() as conn:
         conn.execute(
-            "UPDATE outreach_drafts SET status='approved', approved_at=? WHERE id=?",
-            (datetime.now(timezone.utc).isoformat(), draft_id),
+            "UPDATE outreach_drafts SET status='approved', approved_at=?, recipient_email=? WHERE id=?",
+            (datetime.now(timezone.utc).isoformat(), recipient or None, draft_id),
         )
         conn.commit()
-    return {"status": "approved"}
+    return {"status": "approved", "sent": channel == "email"}
 
 
 @app.post("/api/drafts/{draft_id}/responded")
@@ -678,6 +718,13 @@ HTML = r"""<!DOCTYPE html>
             class="w-full text-sm text-slate-700 bg-slate-50 rounded-lg p-4 border border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-200 resize-none"></textarea>
         </div>
 
+        <!-- Recipient email (email channel only) -->
+        <div x-show="d.channel==='email'" class="px-5 pb-3">
+          <label class="text-xs text-slate-500 font-medium">Recipient email</label>
+          <input x-model="d._recipientEmail" type="email" placeholder="founder@project.xyz"
+            class="mt-1 w-full text-sm border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-200"/>
+        </div>
+
         <!-- Actions -->
         <div class="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
           <div class="flex gap-2">
@@ -697,12 +744,12 @@ HTML = r"""<!DOCTYPE html>
             </button>
             <button @click="approveDraft(d)" :disabled="d._loading"
               class="text-xs px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5">
-              <span x-show="!d._loading">✓ Approve — Mark as Sent</span>
+              <span x-show="!d._loading" x-text="d.channel==='email' ? '✉ Send Email' : '✓ Approve — Mark as Sent'"></span>
               <span x-show="d._loading" class="flex items-center gap-1">
                 <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
                   <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                </svg>Saving…
+                </svg>Sending…
               </span>
             </button>
           </div>
@@ -809,7 +856,7 @@ function app() {
 
         try {
           const p = await this.getJSON('/api/pending');
-          this.pending = p.map(d=>({...d, _loading:false, _toast:'', _toastType:'', _editing:false, _editBody:d.body, _done:false}));
+          this.pending = p.map(d=>({...d, _loading:false, _toast:'', _toastType:'', _editing:false, _editBody:d.body, _done:false, _recipientEmail:''}));
         } catch (e) { this.errorMsg = 'pending: ' + e.message; console.error(e); }
 
         try {
@@ -845,11 +892,22 @@ function app() {
     },
 
     async approveDraft(d) {
+      if (d.channel === 'email' && !d._recipientEmail.trim()) {
+        d._toast = '✗ Enter recipient email first'; d._toastType = 'err';
+        setTimeout(()=>d._toast='', 3000);
+        return;
+      }
       d._loading = true;
       try {
-        const r = await fetch(`/api/drafts/${d.id}/approve`,{method:'POST'});
+        const body = d.channel === 'email'
+          ? JSON.stringify({ recipient_email: d._recipientEmail.trim() })
+          : '{}';
+        const r = await fetch(`/api/drafts/${d.id}/approve`, {
+          method:'POST', headers:{'Content-Type':'application/json'}, body
+        });
         if (r.ok) {
-          d._toast='✓ Marked as sent'; d._toastType='ok';
+          d._toast = d.channel === 'email' ? '✉ Email sent!' : '✓ Marked as sent';
+          d._toastType = 'ok';
           setTimeout(()=>{ d._done=true; this.stats.pending--; this.stats.sent++; this.refresh(); },1500);
         } else {
           const data = await r.json();

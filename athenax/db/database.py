@@ -90,6 +90,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     od_cols = {row[1] for row in conn.execute("PRAGMA table_info(outreach_drafts)").fetchall()}
     if "remote_outreach_id" not in od_cols:
         conn.execute("ALTER TABLE outreach_drafts ADD COLUMN remote_outreach_id TEXT")
+    if "recipient_email" not in od_cols:
+        conn.execute("ALTER TABLE outreach_drafts ADD COLUMN recipient_email TEXT")
 
     # Dedup: remove duplicate URLs (keep oldest record)
     conn.execute("""
