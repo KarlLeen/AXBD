@@ -16,7 +16,9 @@ Restart=on-failure
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-MemoryMax=200M
+MemoryMax=950M
+MemorySwapMax=2G
+OOMPolicy=continue
 Nice=15
 
 [Install]
