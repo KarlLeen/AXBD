@@ -229,7 +229,7 @@ For every lead:
               "[project name] partnerships site:twitter.com" and
               "[project name] business development site:twitter.com".
               Find 2–3 people who do BD/partnerships/growth for this project.
-              Record as bd_twitter_handles: array of {handle, name, role, followers}.
+              Record as bd_twitter_handles: array of {{handle, name, role, followers}}.
               Include the main project handle in this array too (role: "official").
               If no BD person found, just include the main handle with role "official".
 ③ LinkedIn  — search the company name on LinkedIn. Extract:
