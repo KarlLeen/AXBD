@@ -118,7 +118,7 @@ Sector anchor targets:
              projects with real AUM or TVL — NOT just tokenization concepts
 """
 
-PIPELINE_MIX = "Target mix: 70% new/early-stage + 30% established projects across the top 5 leads."
+PIPELINE_MIX = "Target mix: 70% new/early-stage + 30% established projects across all evaluated leads."
 
 
 def build_llm() -> LLM:
@@ -310,13 +310,13 @@ For ESTABLISHED projects:
 
 Score based on tier (Tier 1 = 85–100, Tier 2 = 70–84), sector leadership, and active development.
 
-━━━ STEP 4 — SELECT TOP 5 ━━━
+━━━ STEP 4 — EVALUATE ALL LEADS ━━━
 {PIPELINE_MIX}
-Aim for ~3–4 new projects and ~1–2 established anchors in your top 5.
-Rank by score. Discard anything below 55.
+Evaluate EVERY lead that passes the disqualifier check. Do NOT limit to a subset.
+Discard only leads that score below 55 — include everything else in your output.
 
 ━━━ STEP 5 — PRODUCE DETAILED EVALUATION ━━━
-For each of the top 5, produce a full criteria breakdown so the reviewer can
+For EVERY surviving lead, produce a full criteria breakdown so the reviewer can
 see exactly why it scored the way it did. If the Scout did not provide a field
 (e.g. github_stars is null) and you need it to evaluate, call the github_search
 or coingecko_search tool to fetch it. Do not leave a criterion unevaluated.
@@ -328,7 +328,7 @@ For each criterion record:
 Return your results as a JSON array.
 """,
         expected_output=(
-            "A JSON array of exactly 5 objects, each with: "
+            "A JSON array of ALL evaluated leads that scored ≥ 55 (no upper limit on count), each with: "
             "lead_name, lead_url, sector (one of the 7 sectors), "
             "project_type ('new' or 'established'), "
             "compatibility_score (int 0–100), "
@@ -364,7 +364,10 @@ Return your results as a JSON array.
 
     writer_task = Task(
         description="""
-You have the top 5 evaluated leads. Draft one outreach message per lead.
+You have a list of evaluated leads from the Evaluator, each with a compatibility_score.
+Select the TOP 5 leads by compatibility_score and draft one outreach message per lead.
+If two leads have the same score, prefer the one with stronger velocity signals.
+Only write for exactly 5 leads — no more, no fewer.
 
 ━━━ WHO YOU ARE ━━━
 You represent AthenaX — NounsDAO's decentralized incubation and distribution layer.
@@ -409,7 +412,7 @@ speed of onboarding or short-term token launches.
 Return 5 draft objects in JSON.
 """,
         expected_output=(
-            "A JSON array of exactly 5 objects, each with: "
+            "A JSON array of exactly 5 objects (the top 5 leads by compatibility_score), each with: "
             "lead_name, channel ('twitter_dm' or 'email'), "
             "subject (string or null for DMs), body (the message text), "
             "target_handle (Twitter handle chosen for DMs, null for email), "
