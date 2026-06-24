@@ -152,6 +152,41 @@ Return your results as a JSON array.
     raw = result.tasks_output[0].raw if result.tasks_output else ""
     evals = _extract_json(raw)
 
+    if not evals and raw.strip():
+        # Model returned prose analysis instead of JSON — convert it
+        print("\n[WARN] Output was not JSON — converting analysis to JSON via API...")
+        import litellm
+        conversion = litellm.completion(
+            model="deepseek/deepseek-chat",
+            api_key=os.environ["DEEPSEEK_API_KEY"],
+            base_url="https://api.deepseek.com/v1",
+            temperature=0.1,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You convert evaluation analysis text into a JSON array. "
+                        "Return ONLY a valid JSON array — no markdown fences, no commentary, "
+                        "no explanation. Each object must have: lead_name, lead_url, sector, "
+                        "project_type, compatibility_score, disqualifiers_checked, "
+                        "minimum_requirements_met, signal_boosters, velocity_assessment, "
+                        "nounish_traits, reason_for_partnership, listing_fit_notes, "
+                        "score_breakdown, criteria_detail."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Convert this evaluation analysis into a JSON array. "
+                        "Only include leads that scored ≥ 55. "
+                        "Return ONLY the JSON array:\n\n" + raw
+                    ),
+                },
+            ],
+        )
+        raw2 = conversion.choices[0].message.content
+        evals = _extract_json(raw2)
+
     if not evals:
         print("\n[ERROR] No evaluations parsed from output. Raw output snippet:")
         print(raw[:500])
