@@ -20,24 +20,24 @@ def _now() -> str:
 
 
 def _extract_json(text: str) -> list:
-    """Pull the first valid JSON array of objects out of a potentially markdown-wrapped LLM response."""
+    """Return the largest JSON array of objects found in text (handles prose/markdown wrappers)."""
     import re
-    # Strip markdown code fences
     text = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
     decoder = json.JSONDecoder()
+    best: list = []
     start = 0
     while True:
         pos = text.find("[", start)
         if pos == -1:
-            return []
+            break
         try:
             result, _ = decoder.raw_decode(text, pos)
-            if isinstance(result, list) and len(result) > 0 and isinstance(result[0], dict):
-                return result
+            if isinstance(result, list) and len(result) > len(best) and any(isinstance(r, dict) for r in result):
+                best = result
         except json.JSONDecodeError:
             pass
         start = pos + 1
-    return []
+    return best
 
 
 def _j(val) -> str | None:
