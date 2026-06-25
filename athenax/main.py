@@ -20,11 +20,19 @@ def _now() -> str:
 
 
 def _extract_json(text: str) -> list:
-    """Return the largest JSON array of objects found in text (handles prose/markdown wrappers)."""
+    """Return the best JSON array of objects found in text.
+
+    Priority:
+    1. Arrays whose first element has 'url'+'name' keys  (Scout lead format)
+    2. Arrays whose first element has 'lead_url'+'lead_name' keys  (Evaluator format)
+    3. Largest remaining array of dicts (fallback)
+    """
     import re
     text = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
     decoder = json.JSONDecoder()
-    best: list = []
+    lead_candidates: list[list] = []
+    eval_candidates: list[list] = []
+    other_candidates: list[list] = []
     start = 0
     while True:
         pos = text.find("[", start)
@@ -32,12 +40,24 @@ def _extract_json(text: str) -> list:
             break
         try:
             result, _ = decoder.raw_decode(text, pos)
-            if isinstance(result, list) and len(result) > len(best) and any(isinstance(r, dict) for r in result):
-                best = result
+            if isinstance(result, list) and result and isinstance(result[0], dict):
+                first = result[0]
+                if "url" in first and "name" in first:
+                    lead_candidates.append(result)
+                elif "lead_url" in first or "lead_name" in first:
+                    eval_candidates.append(result)
+                else:
+                    other_candidates.append(result)
         except json.JSONDecodeError:
             pass
         start = pos + 1
-    return best
+    if lead_candidates:
+        return max(lead_candidates, key=len)
+    if eval_candidates:
+        return max(eval_candidates, key=len)
+    if other_candidates:
+        return max(other_candidates, key=len)
+    return []
 
 
 def _j(val) -> str | None:
