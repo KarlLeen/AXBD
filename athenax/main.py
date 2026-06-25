@@ -60,12 +60,22 @@ def _extract_json(text: str) -> list:
         except json.JSONDecodeError:
             pass
         start = pos + 1
+    print(f"  [DEBUG _extract_json] lead_candidates sizes: {sorted([len(x) for x in lead_candidates], reverse=True)}")
+    print(f"  [DEBUG _extract_json] eval_candidates sizes: {sorted([len(x) for x in eval_candidates], reverse=True)}")
+    print(f"  [DEBUG _extract_json] other_candidates sizes: {sorted([len(x) for x in other_candidates], reverse=True)}")
     if lead_candidates:
-        return max(lead_candidates, key=len)
+        best = max(lead_candidates, key=len)
+        print(f"  [DEBUG _extract_json] returning lead array len={len(best)}, first keys={list(best[0].keys())[:6]}")
+        return best
     if eval_candidates:
-        return max(eval_candidates, key=len)
+        best = max(eval_candidates, key=len)
+        print(f"  [DEBUG _extract_json] returning eval array len={len(best)}, first keys={list(best[0].keys())[:6]}")
+        return best
     if other_candidates:
-        return max(other_candidates, key=len)
+        best = max(other_candidates, key=len)
+        print(f"  [DEBUG _extract_json] returning other array len={len(best)}, first keys={list(best[0].keys())[:6]}")
+        return best
+    print("  [DEBUG _extract_json] returning []")
     return []
 
 
@@ -364,7 +374,12 @@ def run_pipeline() -> None:
     raw_leads_text = tasks_output[0].raw if len(tasks_output) > 0 else ""
     raw_evals_text = tasks_output[1].raw if len(tasks_output) > 1 else ""
 
+    print(f"  [DEBUG] tasks_output count: {len(tasks_output)}")
+    print(f"  [DEBUG] raw_leads_text length: {len(raw_leads_text)}, starts: {raw_leads_text[:120]!r}")
+    print(f"  [DEBUG] raw_evals_text length: {len(raw_evals_text)}, starts: {raw_evals_text[:120]!r}")
+    print("  [DEBUG] --- _extract_json for LEADS ---")
     leads = _extract_json(raw_leads_text)
+    print("  [DEBUG] --- _extract_json for EVALS ---")
     evals = _extract_json(raw_evals_text)
 
     # Filter out Nouns DAO's own / affiliated projects
