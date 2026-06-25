@@ -20,21 +20,23 @@ def _now() -> str:
 
 
 def _extract_json(text: str) -> list:
-    """Pull the first JSON array out of a potentially markdown-wrapped LLM response."""
+    """Pull the first valid JSON array of objects out of a potentially markdown-wrapped LLM response."""
     import re
     # Strip markdown code fences
     text = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
-    # Use the stdlib decoder which correctly handles [ ] inside strings
-    start = text.find("[")
-    if start == -1:
-        return []
     decoder = json.JSONDecoder()
-    try:
-        result, _ = decoder.raw_decode(text, start)
-        if isinstance(result, list):
-            return result
-    except json.JSONDecodeError:
-        pass
+    start = 0
+    while True:
+        pos = text.find("[", start)
+        if pos == -1:
+            return []
+        try:
+            result, _ = decoder.raw_decode(text, pos)
+            if isinstance(result, list) and len(result) > 0 and isinstance(result[0], dict):
+                return result
+        except json.JSONDecodeError:
+            pass
+        start = pos + 1
     return []
 
 
