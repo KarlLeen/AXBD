@@ -288,13 +288,11 @@ def run_pipeline() -> None:
     result = crew.kickoff()
 
     tasks_output = getattr(result, "tasks_output", [])
-    raw_leads_text  = tasks_output[0].raw if len(tasks_output) > 0 else ""
-    raw_evals_text  = tasks_output[1].raw if len(tasks_output) > 1 else ""
-    raw_drafts_text = tasks_output[2].raw if len(tasks_output) > 2 else ""
+    raw_leads_text = tasks_output[0].raw if len(tasks_output) > 0 else ""
+    raw_evals_text = tasks_output[1].raw if len(tasks_output) > 1 else ""
 
-    leads  = _extract_json(raw_leads_text)
-    evals  = _extract_json(raw_evals_text)
-    drafts = _extract_json(raw_drafts_text)
+    leads = _extract_json(raw_leads_text)
+    evals = _extract_json(raw_evals_text)
 
     # Filter out Nouns DAO's own / affiliated projects
     from athenax.filters import filter_leads, is_excluded
@@ -304,29 +302,24 @@ def run_pipeline() -> None:
         for e in excluded:
             print(f"     - {e.get('name','?')} — {e['_exclusion_reason']}")
 
-    # Drop evals/drafts whose lead was excluded (match by name)
     excluded_names = {(e.get("name") or "").lower() for e in excluded}
     def _is_excluded_name(item_name: str) -> bool:
         n = (item_name or "").lower()
         if n in excluded_names:
             return True
-        # also re-check the name against keyword rules directly
         return is_excluded({"name": item_name})[0]
 
-    evals  = [e for e in evals  if not _is_excluded_name(e.get("lead_name", ""))]
-    drafts = [d for d in drafts if not _is_excluded_name(d.get("lead_name", ""))]
+    evals = [e for e in evals if not _is_excluded_name(e.get("lead_name", ""))]
 
     print(f"\n📦  Scout found    : {len(leads)} leads (after exclusions)")
-    print(f"📊  Evaluator kept : {len(evals)} top leads")
-    print(f"✉️   Writer drafted : {len(drafts)} messages")
+    print(f"📊  Evaluator kept : {len(evals)} leads")
 
     lead_id_map = _save_leads(leads)
     eval_id_map = _save_evaluations(evals, lead_id_map)
-    _save_drafts(drafts, lead_id_map, eval_id_map)
 
     print("\n✅  Saved to athenax.db — pushing to AthenaX API...")
     _push_pipeline_results(lead_id_map, eval_id_map)
-    print("    Run `athenax review` (CLI) or `athenax bot` (Telegram) to review drafts.\n")
+    print("    Open the dashboard to review evaluated leads.\n")
 
 
 def main() -> None:
