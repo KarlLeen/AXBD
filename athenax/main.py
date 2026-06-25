@@ -47,20 +47,25 @@ def _balanced_extract(text: str, start: int) -> str | None:
 
 
 def _try_parse(s: str):
-    """json.loads with trailing-comma repair fallback."""
+    """json.loads → trailing-comma repair → json_repair (handles unescaped quotes etc.)"""
     try:
         return json.loads(s)
-    except json.JSONDecodeError as e:
-        if len(s) > 5000:
-            snippet = s[max(0, e.pos - 80) : e.pos + 80]
-            print(f"  [DEBUG _try_parse] large-array JSONDecodeError @ pos {e.pos}: {e.msg!r}")
-            print(f"  [DEBUG _try_parse] context: {snippet!r}")
+    except json.JSONDecodeError:
+        pass
     import re as _re
     fixed = _re.sub(r",(\s*[}\]])", r"\1", s)
     try:
         return json.loads(fixed)
     except json.JSONDecodeError:
-        return None
+        pass
+    try:
+        from json_repair import repair_json
+        repaired = repair_json(s, return_objects=True)
+        if isinstance(repaired, (list, dict)):
+            return repaired
+    except Exception:
+        pass
+    return None
 
 
 def _extract_json(text: str) -> list:
