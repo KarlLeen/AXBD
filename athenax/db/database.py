@@ -9,12 +9,27 @@ CREATE TABLE IF NOT EXISTS leads (
     source                TEXT NOT NULL,
     name                  TEXT NOT NULL,
     url                   TEXT NOT NULL UNIQUE,
+    short_description     TEXT,
     description           TEXT,
     sector                TEXT,
+    subcategory           TEXT,
+    stage                 TEXT,
+    founded               TEXT,
+    website               TEXT,
+    github_url            TEXT,
+    twitter_url           TEXT,
+    discord_url           TEXT,
+    docs_url              TEXT,
+    other_links           TEXT,
+    backers               TEXT,
+    team                  TEXT,
+    voices                TEXT,
+    bounties              TEXT,
     github_stars          INTEGER,
     github_forks          INTEGER,
     github_contributors   INTEGER,
     commits_last_30d      INTEGER,
+    commits_last_90d      INTEGER,
     tech_stack            TEXT,
     linkedin_profile      TEXT,
     linkedin_recent_post  TEXT,
@@ -23,6 +38,8 @@ CREATE TABLE IF NOT EXISTS leads (
     twitter_recent_tweet  TEXT,
     bd_twitter_handles    TEXT,
     contact_email         TEXT,
+    velocity_notes        TEXT,
+    conference_origin     TEXT,
     remote_lead_id        TEXT,
     created_at            TEXT NOT NULL,
     updated_at            TEXT NOT NULL
@@ -54,6 +71,8 @@ CREATE TABLE IF NOT EXISTS outreach_drafts (
     status              TEXT NOT NULL DEFAULT 'pending',
     approved_at         TEXT,
     remote_outreach_id  TEXT,
+    recipient_email     TEXT,
+    target_handle       TEXT,
     created_at          TEXT NOT NULL,
     FOREIGN KEY (lead_id) REFERENCES leads(id),
     FOREIGN KEY (evaluation_id) REFERENCES evaluations(id)
@@ -77,45 +96,52 @@ def init_db() -> None:
         conn.commit()
 
 
+# New columns added in this schema version
+_NEW_LEAD_COLS = [
+    ("short_description",  "TEXT"),
+    ("subcategory",        "TEXT"),
+    ("stage",              "TEXT"),
+    ("founded",            "TEXT"),
+    ("website",            "TEXT"),
+    ("github_url",         "TEXT"),
+    ("twitter_url",        "TEXT"),
+    ("discord_url",        "TEXT"),
+    ("docs_url",           "TEXT"),
+    ("other_links",        "TEXT"),
+    ("backers",            "TEXT"),
+    ("team",               "TEXT"),
+    ("voices",             "TEXT"),
+    ("bounties",           "TEXT"),
+    ("commits_last_90d",   "INTEGER"),
+    ("velocity_notes",     "TEXT"),
+    ("conference_origin",  "TEXT"),
+    ("remote_lead_id",     "TEXT"),
+    ("commits_last_30d",   "INTEGER"),
+    ("updated_at",         "TEXT"),
+    ("bd_twitter_handles", "TEXT"),
+    ("contact_email",      "TEXT"),
+]
+
+
 def _migrate(conn: sqlite3.Connection) -> None:
     """Non-destructive migrations applied on every startup."""
     lead_cols = {row[1] for row in conn.execute("PRAGMA table_info(leads)").fetchall()}
-
-    for col, definition in [
-        ("remote_lead_id",   "TEXT"),
-        ("commits_last_30d", "INTEGER"),
-        ("updated_at",       "TEXT"),
-    ]:
+    for col, definition in _NEW_LEAD_COLS:
         if col not in lead_cols:
             conn.execute(f"ALTER TABLE leads ADD COLUMN {col} {definition}")
 
     od_cols = {row[1] for row in conn.execute("PRAGMA table_info(outreach_drafts)").fetchall()}
-    if "remote_outreach_id" not in od_cols:
-        conn.execute("ALTER TABLE outreach_drafts ADD COLUMN remote_outreach_id TEXT")
-    if "recipient_email" not in od_cols:
-        conn.execute("ALTER TABLE outreach_drafts ADD COLUMN recipient_email TEXT")
-    if "target_handle" not in od_cols:
-        conn.execute("ALTER TABLE outreach_drafts ADD COLUMN target_handle TEXT")
+    for col in ("remote_outreach_id", "recipient_email", "target_handle"):
+        if col not in od_cols:
+            conn.execute(f"ALTER TABLE outreach_drafts ADD COLUMN {col} TEXT")
 
-    lead_cols = {row[1] for row in conn.execute("PRAGMA table_info(leads)").fetchall()}
-    for col, definition in [
-        ("bd_twitter_handles", "TEXT"),
-        ("contact_email",      "TEXT"),
-    ]:
-        if col not in lead_cols:
-            conn.execute(f"ALTER TABLE leads ADD COLUMN {col} {definition}")
-
-    # Dedup: remove duplicate URLs (keep oldest record)
+    # Dedup: keep oldest record per URL
     conn.execute("""
         DELETE FROM leads WHERE id NOT IN (
             SELECT MIN(id) FROM leads GROUP BY url
         )
     """)
-
-    # Create UNIQUE index on url (safe if already exists via IF NOT EXISTS)
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_url ON leads(url)")
-
-    # Fill updated_at for existing rows that have none
     conn.execute("UPDATE leads SET updated_at = created_at WHERE updated_at IS NULL")
 
 

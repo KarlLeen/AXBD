@@ -38,80 +38,122 @@ def _extract_json(text: str) -> list:
     return []
 
 
+def _j(val) -> str | None:
+    """Serialize list/dict to JSON string; pass through strings; return None for None."""
+    if val is None:
+        return None
+    if isinstance(val, (list, dict)):
+        return json.dumps(val, ensure_ascii=False)
+    return val
+
+
 def _save_leads(leads: list) -> dict[str, str]:
     """Upsert lead rows (dedup by URL); return {name → id} map."""
     id_map: dict[str, str] = {}
     now = _now()
     with get_connection() as conn:
         for lead in leads:
-            url = lead.get("url", "")
-            tech = lead.get("tech_stack")
-            tech_json = json.dumps(tech) if isinstance(tech, list) else tech
+            url = lead.get("url") or lead.get("website") or ""
+            if not url:
+                continue
 
             existing = conn.execute(
                 "SELECT id FROM leads WHERE url = ?", (url,)
             ).fetchone()
 
             if existing:
-                # URL already in DB — update numeric fields only
                 lead_id = existing[0]
                 conn.execute(
                     """UPDATE leads SET
-                        github_stars       = COALESCE(?, github_stars),
-                        github_forks       = COALESCE(?, github_forks),
-                        commits_last_30d   = COALESCE(?, commits_last_30d),
-                        twitter_followers  = COALESCE(?, twitter_followers),
+                        github_stars         = COALESCE(?, github_stars),
+                        github_forks         = COALESCE(?, github_forks),
+                        commits_last_30d     = COALESCE(?, commits_last_30d),
+                        commits_last_90d     = COALESCE(?, commits_last_90d),
+                        twitter_followers    = COALESCE(?, twitter_followers),
                         twitter_recent_tweet = COALESCE(?, twitter_recent_tweet),
                         linkedin_recent_post = COALESCE(?, linkedin_recent_post),
-                        updated_at         = ?
+                        stage                = COALESCE(?, stage),
+                        updated_at           = ?
                     WHERE id = ?""",
                     (
                         lead.get("github_stars"),
                         lead.get("github_forks"),
                         lead.get("commits_last_30d"),
+                        lead.get("commits_last_90d"),
                         lead.get("twitter_followers"),
                         lead.get("twitter_recent_tweet"),
                         lead.get("linkedin_recent_post"),
-                        now,
-                        lead_id,
+                        lead.get("stage"),
+                        now, lead_id,
                     ),
                 )
             else:
-                # New URL — insert fresh row
                 lead_id = str(uuid.uuid4())
-                bd_handles = lead.get("bd_twitter_handles")
-                bd_handles_json = json.dumps(bd_handles) if isinstance(bd_handles, list) else bd_handles
                 conn.execute(
-                    """INSERT INTO leads
-                       (id, source, name, url, description, sector,
+                    """INSERT INTO leads (
+                        id, source, name, url,
+                        short_description, description,
+                        sector, subcategory, stage, founded,
+                        website, github_url, twitter_url, discord_url, docs_url,
+                        other_links, backers, team, voices, bounties,
                         github_stars, github_forks, github_contributors,
-                        commits_last_30d, tech_stack,
+                        commits_last_30d, commits_last_90d, tech_stack,
                         linkedin_profile, linkedin_recent_post,
                         twitter_handle, twitter_followers, twitter_recent_tweet,
                         bd_twitter_handles, contact_email,
-                        created_at, updated_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        velocity_notes, conference_origin,
+                        created_at, updated_at
+                    ) VALUES (
+                        ?,?,?,?,
+                        ?,?,
+                        ?,?,?,?,
+                        ?,?,?,?,?,
+                        ?,?,?,?,?,
+                        ?,?,?,
+                        ?,?,?,
+                        ?,?,
+                        ?,?,?,
+                        ?,?,
+                        ?,?,
+                        ?,?
+                    )""",
                     (
                         lead_id,
                         lead.get("source", "unknown"),
                         lead.get("name", ""),
                         url,
+                        lead.get("short_description"),
                         lead.get("description", ""),
-                        lead.get("sector"),
+                        lead.get("category") or lead.get("sector"),
+                        lead.get("subcategory"),
+                        lead.get("stage"),
+                        lead.get("founded"),
+                        lead.get("website") or url,
+                        lead.get("github_url"),
+                        lead.get("twitter_url"),
+                        lead.get("discord_url"),
+                        lead.get("docs_url"),
+                        _j(lead.get("other_links")),
+                        _j(lead.get("backers")),
+                        _j(lead.get("team")),
+                        _j(lead.get("voices")),
+                        _j(lead.get("bounties")),
                         lead.get("github_stars"),
                         lead.get("github_forks"),
                         lead.get("github_contributors"),
                         lead.get("commits_last_30d"),
-                        tech_json,
+                        lead.get("commits_last_90d"),
+                        _j(lead.get("tech_stack")),
                         lead.get("linkedin_profile"),
                         lead.get("linkedin_recent_post"),
                         lead.get("twitter_handle"),
                         lead.get("twitter_followers"),
                         lead.get("twitter_recent_tweet"),
-                        bd_handles_json,
+                        _j(lead.get("bd_twitter_handles")),
                         lead.get("contact_email"),
-                        now,
-                        now,
+                        lead.get("velocity_notes"),
+                        lead.get("conference_origin"),
+                        now, now,
                     ),
                 )
             id_map[lead.get("name", "")] = lead_id

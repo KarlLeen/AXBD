@@ -212,66 +212,130 @@ SEARCH STRATEGY:
    Dev Tools:
    • "KubeCon GitHub Universe DevRelCon 2026 startup after:2025-06-01"
 
-FOR EACH LEAD — MANDATORY CROSS-PLATFORM ENRICHMENT:
-After finding a lead on ANY source (GitHub, Twitter, LinkedIn, or web), you MUST search
-for that project on ALL other platforms before moving on. Do not skip this step.
+FOR EACH LEAD — COLLECT ALL OF THE FOLLOWING:
 
-For every lead:
-① GitHub  — search the project name to find its repo. Extract: stars, forks,
-             commits_last_30d, commits_last_90d, archived, tech_stack, homepage.
-             If repo not found, record null for these fields.
-② Twitter/X — search the project/company name to find their handle. Extract:
-              twitter_handle (main official handle), follower count, most recent tweet text.
-              ALSO search for BD/partnerships team members on Twitter:
-              Search "[project name] head of BD site:twitter.com" and
-              "[project name] partnerships site:twitter.com" and
-              "[project name] business development site:twitter.com".
-              Find 2–3 people who do BD/partnerships/growth for this project.
+━━━ PLATFORM ENRICHMENT (search all platforms for every lead) ━━━
+
+① GitHub — find the repo. Extract: stars, forks, commits_last_30d, commits_last_90d,
+            archived (bool), tech_stack (languages/frameworks), homepage URL.
+② Twitter/X — find the official handle, follower count, most recent tweet.
+              ALSO find BD/partnerships team members:
+              Search "[project name] head of BD site:twitter.com",
+              "[project name] partnerships site:twitter.com".
               Record as bd_twitter_handles: array of {{handle, name, role, followers}}.
-              Include the main project handle in this array too (role: "official").
-              If no BD person found, just include the main handle with role "official".
-③ LinkedIn  — search the company name on LinkedIn. Extract:
-              linkedin_profile URL, most recent post or announcement.
-              If not found, record null.
-④ Web (Serper) — search "[project name] funding announcement" and
-                 "[project name] partnerships BD contact" to surface VC backing and contact info.
-⑤ Contact email — Try to find a business contact / BD email for outreach:
-              Search "[project name] partnerships@" OR "[project name] bd@" OR
-              "[project name] hello@" OR check their GitHub README or website /contact page.
-              Common patterns to try: partnerships@[domain], bd@[domain], hello@[domain],
-              contact@[domain]. If you find a likely email, record it as contact_email.
-              If none found, record null. Do NOT guess — only record if you found evidence.
+              Include the main project handle (role: "official"). 2–4 entries preferred.
+③ LinkedIn — find linkedin_profile URL and most recent post/announcement.
+④ Web (Serper) — search "[project name] funding" and "[project name] team founders"
+                 to surface backers, founding date, and team info.
+⑤ Contact email — search for bd@, partnerships@, hello@ at the project's domain.
+                  Only record if you found real evidence. Null if not found.
 
-THEN also collect:
-• Basic: name, URL, source (where it was originally found), description, sector
-• Signals: any VC/accelerator mentions, funding news, launch dates
-• Velocity clue: any evidence of rapid recent growth ("just launched", "trending", recent funding)
+━━━ PROFILE FIELDS (fill as completely as possible) ━━━
 
-HARD ACTIVITY CHECK — set status field for EVERY lead:
-• status = "inactive" if ANY of the following is true:
-  - GitHub repo is archived (archived == true)
-  - commits_last_90d == 0 (no commits in 90 days; treat null as unknown, not inactive)
-  - Project has publicly announced shutdown, sunset, or wind-down
-• status = "active" otherwise
-Do NOT pass inactive leads to the Evaluator — exclude them from the output array.
+NAME & DESCRIPTIONS
+• name — official project/company name
+• short_description — one sentence (≤15 words) for a listing header. What it does, plainly.
+• description — 2–4 sentence "About" paragraph. What it builds, why it matters, key traction.
+
+CLASSIFICATION
+• category — MUST be exactly one of:
+    "AI & Agents" | "Biotech" | "Crypto" | "Developer Tools" |
+    "Infrastructure" | "Robotics" | "RWA"
+• subcategory — free-form niche tag within the category.
+    Examples: "Foundation Models", "Drug Discovery", "ZK Proofs", "Humanoid Robots",
+    "Tokenized Real Estate", "CI/CD", "Edge Computing". Be specific.
+
+STAGE — pick the best match:
+• "Active" — live product, actively operating
+• "Active Development" — building, not yet live
+• "Beta" — live but in beta / limited access
+• "Seed" — raised or actively raising seed round
+• "Series A" — raised or raising Series A
+• "Series B" — raised or raising Series B+
+• "Acquired" — acquired by another company
+• "Not Active" — dormant / shut down (exclude these from output)
+
+FOUNDING
+• founded — year the project was founded (e.g. "2023"). Search LinkedIn, Crunchbase,
+             website footer. Null if not found.
+
+LINKS (collect every link you can find)
+• website — main product/company URL
+• github_url — GitHub repo or org URL
+• twitter_url — full Twitter/X profile URL (e.g. https://x.com/handle)
+• discord_url — Discord server invite link. Search "[project name] discord" or check website.
+• docs_url — documentation URL (docs., gitbook., notion., etc.)
+• other_links — array of any other relevant links (blog, whitepaper, token page, etc.)
+
+BACKERS
+• backers — JSON array of strings: all known VCs, angels, accelerators backing this project.
+  Search "[project name] investors", "[project name] backed by", "[project name] raised from".
+  Examples: ["a16z", "Paradigm", "YC W26", "Sequoia"]. Empty array [] if none found.
+
+TEAM (search LinkedIn, website /team page, Twitter bios)
+• team — JSON array of team members. For each person try to find:
+  - name (full name)
+  - title (job title / role)
+  - bio (2–4 bullet points: top university, previous companies, notable achievements)
+  - linkedin (LinkedIn profile URL or null)
+  - twitter (Twitter handle or null)
+  Aim for 2–5 team members. Empty array [] if none found.
+
+VOICES (external mentions — NOT from the project itself)
+• voices — JSON array of external coverage. For each item:
+  - url (link to the article, tweet, or post)
+  - source (e.g. "TechCrunch", "a16z blog", "@elonmusk on X")
+  - summary (one sentence: what was said)
+  Search "[project name] mentioned by" and "[project name] news 2025 2026".
+  Empty array [] if none found.
+
+BOUNTIES (reward programs the project runs)
+• bounties — JSON array. For each:
+  - title
+  - description (what the bounty asks for)
+  - reward (e.g. "$5,000 USDC")
+  - url
+  Search "[project name] bounty" or "[project name] grants program".
+  Empty array [] if none found.
+
+GITHUB SIGNALS (already covered in ① but include in output)
+• github_stars, github_forks, commits_last_30d, commits_last_90d, tech_stack
+
+SOCIAL SIGNALS
+• twitter_handle, twitter_followers, twitter_recent_tweet
+• linkedin_profile, linkedin_recent_post
+• bd_twitter_handles, contact_email
+
+VELOCITY
+• velocity_notes — one sentence on any evidence of rapid recent growth.
+• conference_origin — e.g. "ETHGlobal Bangkok winner", "YC W26", null if none.
+
+━━━ ACTIVITY CHECK ━━━
+• Set status = "inactive" if: repo archived, commits_last_90d == 0, or project announced shutdown.
+• Exclude inactive projects from output entirely.
 
 Return a single JSON array of ACTIVE leads only.
 """,
         expected_output=(
-            "A JSON array of active leads only (inactive leads excluded). Each object has: "
-            "source, name, url, description, sector, status ('active'), "
-            "github_stars, github_forks, archived (bool), "
-            "commits_last_30d (int or null), commits_last_90d (int or null), "
-            "tech_stack (array or null), "
+            "A JSON array of active leads only. Each object has: "
+            "source, name, url, status ('active'), "
+            "short_description, description, "
+            "category (one of the 7 exact category names), subcategory (free-form niche tag), "
+            "stage ('Active'|'Active Development'|'Beta'|'Seed'|'Series A'|'Series B'|'Acquired'), "
+            "founded (year string or null), "
+            "website (URL), github_url, twitter_url, discord_url, docs_url, "
+            "other_links (array of URLs), "
+            "backers (array of strings — VC/angel/accelerator names), "
+            "team (array of {name, title, bio, linkedin, twitter}), "
+            "voices (array of {url, source, summary}), "
+            "bounties (array of {title, description, reward, url}), "
+            "github_stars, github_forks, commits_last_30d, commits_last_90d, "
+            "tech_stack (array), archived (bool), "
             "linkedin_profile, linkedin_recent_post, "
-            "twitter_handle (main official handle, string or null), "
-            "twitter_followers (int or null), twitter_recent_tweet (string or null), "
-            "bd_twitter_handles (array of {handle, name, role, followers} — BD/partnerships "
-            "people plus official account; 2–4 entries preferred, null if none found), "
-            "contact_email (string or null — best BD/partnerships email found, null if not found), "
-            "vc_backing (string or null), funding_stage (string or null), "
-            "velocity_notes (string or null — any evidence of rapid recent growth), "
-            "conference_origin (string or null — e.g. 'ETHGlobal winner', 'YC W26')."
+            "twitter_handle, twitter_followers, twitter_recent_tweet, "
+            "bd_twitter_handles (array of {handle, name, role, followers}), "
+            "contact_email, "
+            "velocity_notes, conference_origin."
         ),
         agent=scout,
     )
