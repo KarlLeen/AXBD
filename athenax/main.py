@@ -50,8 +50,11 @@ def _try_parse(s: str):
     """json.loads with trailing-comma repair fallback."""
     try:
         return json.loads(s)
-    except json.JSONDecodeError:
-        pass
+    except json.JSONDecodeError as e:
+        if len(s) > 5000:
+            snippet = s[max(0, e.pos - 80) : e.pos + 80]
+            print(f"  [DEBUG _try_parse] large-array JSONDecodeError @ pos {e.pos}: {e.msg!r}")
+            print(f"  [DEBUG _try_parse] context: {snippet!r}")
     import re as _re
     fixed = _re.sub(r",(\s*[}\]])", r"\1", s)
     try:
