@@ -17,19 +17,32 @@ app = FastAPI(title="AthenaX Dashboard", docs_url=None, redoc_url=None)
 from athenax.db.database import init_db as _init_db
 _init_db()
 
-_pipeline_state = {"running": False, "last_run": None, "last_status": None, "last_error": None}
+_pipeline_state = {"running": False, "last_run": None, "last_status": None,
+                   "last_error": None, "last_leads_added": None, "last_total": None}
 _pipeline_lock = threading.Lock()
+
+
+def _count_leads() -> int:
+    try:
+        with _db() as conn:
+            return conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
+    except Exception:
+        return 0
 
 
 def _run_pipeline_bg():
     from athenax.main import run_pipeline
+    before = _count_leads()
     with _pipeline_lock:
         _pipeline_state["running"] = True
         _pipeline_state["last_error"] = None
     try:
         run_pipeline()
+        after = _count_leads()
         with _pipeline_lock:
             _pipeline_state["last_status"] = "ok"
+            _pipeline_state["last_leads_added"] = after - before
+            _pipeline_state["last_total"] = after
     except Exception as exc:
         with _pipeline_lock:
             _pipeline_state["last_status"] = "error"
@@ -237,6 +250,16 @@ HTML = r"""<!DOCTYPE html>
 
   <div x-show="errorMsg" x-cloak class="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2">
     ⚠️ <span x-text="errorMsg"></span>
+  </div>
+
+  <!-- Pipeline result banner -->
+  <div x-show="pipelineMsg" x-cloak
+       class="mb-4 text-sm rounded-lg px-4 py-2 flex items-start justify-between gap-3"
+       :class="pipelineMsgType==='error' ? 'bg-red-50 border border-red-200 text-red-700'
+             : pipelineMsgType==='warn'  ? 'bg-amber-50 border border-amber-200 text-amber-700'
+             :                             'bg-green-50 border border-green-200 text-green-700'">
+    <span x-text="pipelineMsg"></span>
+    <button @click="pipelineMsg=''" class="opacity-50 hover:opacity-100 flex-shrink-0">✕</button>
   </div>
 
   <!-- Lead count -->
@@ -538,6 +561,8 @@ function app() {
     filterCat: '',
     filterEval: '',
     pipelineRunning: false,
+    pipelineMsg: '',
+    pipelineMsgType: 'ok',
     _pollTimer: null,
 
     get filtered() {
@@ -559,6 +584,10 @@ function app() {
     async init() {
       await this.refresh();
       await this.checkPipelineStatus();
+      // If a run is already in flight (e.g. started in another tab), poll it.
+      if (this.pipelineRunning && !this._pollTimer) {
+        this._pollTimer = setInterval(() => this.checkPipelineStatus(), 10000);
+      }
       setInterval(() => this.refresh(), 30000);
     },
 
@@ -571,8 +600,28 @@ function app() {
           await this.refresh();
           clearInterval(this._pollTimer);
           this._pollTimer = null;
+          this.showPipelineResult(s);
         }
       } catch(e) {}
+    },
+
+    showPipelineResult(s) {
+      if (s.last_status === 'error') {
+        this.pipelineMsg = 'Pipeline failed: ' + (s.last_error || 'unknown error');
+        this.pipelineMsgType = 'error';
+      } else if (s.last_status === 'ok') {
+        const n = s.last_leads_added;
+        if (s.last_total === 0) {
+          this.pipelineMsg = 'Pipeline finished but saved 0 leads — Scout output was empty or unparseable. Check the server logs.';
+          this.pipelineMsgType = 'warn';
+        } else if (n > 0) {
+          this.pipelineMsg = `Pipeline finished — ${n} new lead${n===1?'':'s'} added (${s.last_total} total).`;
+          this.pipelineMsgType = 'ok';
+        } else {
+          this.pipelineMsg = `Pipeline finished — no new leads (${s.last_total} total; existing may have been updated).`;
+          this.pipelineMsgType = 'ok';
+        }
+      }
     },
 
     async runPipeline() {

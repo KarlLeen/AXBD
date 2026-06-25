@@ -126,6 +126,7 @@ def build_llm() -> LLM:
         api_key=os.environ["DEEPSEEK_API_KEY"],
         base_url="https://api.deepseek.com/v1",
         temperature=0.3,
+        max_tokens=8192,  # DeepSeek's ceiling — maximize complete leads per response
     )
 
 
@@ -155,7 +156,12 @@ You are sourcing project listing candidates for the AthenaX Launchpad.
 AthenaX covers seven sectors:
 {SECTORS}
 
-Use ALL your tools to discover 15–20 raw leads. Cast wide — cover multiple sectors.
+Use ALL your tools to discover and fully profile EXACTLY 5 high-quality leads. Cast wide — cover multiple sectors.
+
+HARD CAP — 5 leads: each lead carries a large profile (team, backers, voices, bounties, signals).
+More than ~5 full profiles overflow the model's 8192-token output limit; the JSON then gets
+truncated mid-array and EVERY lead is lost. A complete, well-closed 5-lead array beats a longer
+one that gets cut off. Pick the 5 strongest candidates and profile each one deeply and completely.
 
 SEARCH STRATEGY:
 1. GitHub — search repos per sector:
@@ -314,7 +320,8 @@ VELOCITY
 • Set status = "inactive" if: repo archived, commits_last_90d == 0, or project announced shutdown.
 • Exclude inactive projects from output entirely.
 
-Return a single JSON array of ACTIVE leads only.
+Return a single, COMPLETE JSON array of EXACTLY 5 ACTIVE leads — never more than 5, and make sure
+the array is fully closed (ends with `]`). A truncated array loses every lead.
 """,
         expected_output=(
             "A JSON array of active leads only. Each object has: "

@@ -93,6 +93,17 @@ def _extract_json(text: str) -> list:
     eval_candidates: list[list] = []
     other_candidates: list[list] = []
 
+    def _classify(result) -> None:
+        if isinstance(result, list) and result and isinstance(result[0], dict):
+            first = result[0]
+            if "url" in first and "name" in first and _LEAD_ONLY_KEYS.intersection(first.keys()):
+                lead_candidates.append(result)
+            elif "lead_url" in first or "lead_name" in first:
+                eval_candidates.append(result)
+            elif first:  # non-empty dict — generic fallback; skip [{}] repair noise
+                other_candidates.append(result)
+
+    # Pass 1 — balanced extraction (happy path: the outer array is complete).
     pos = 0
     while True:
         pos = text.find("[", pos)
@@ -100,18 +111,25 @@ def _extract_json(text: str) -> list:
             break
         chunk = _balanced_extract(text, pos)
         if chunk:
-            result = _try_parse(chunk)
-            if isinstance(result, list) and result and isinstance(result[0], dict):
-                first = result[0]
-                if "url" in first and "name" in first and _LEAD_ONLY_KEYS.intersection(first.keys()):
-                    lead_candidates.append(result)
-                elif "lead_url" in first or "lead_name" in first:
-                    eval_candidates.append(result)
-                else:
-                    other_candidates.append(result)
+            _classify(_try_parse(chunk))
             pos += len(chunk)
         else:
             pos += 1
+
+    # Pass 2 — truncation salvage. DeepSeek caps output at 8192 tokens (~32KB);
+    # a 15-20 lead full-profile array overruns that and arrives unterminated, so
+    # _balanced_extract never closes the outer array and Pass 1 only sees inner
+    # sub-arrays (team/backers). Feed the remainder from the first '[' to
+    # json_repair, which drops the incomplete trailing object and closes the
+    # array — recovering every complete lead that arrived before the cutoff.
+    if not lead_candidates and not eval_candidates:
+        first = text.find("[")
+        if first != -1:
+            try:
+                from json_repair import repair_json
+                _classify(repair_json(text[first:], return_objects=True))
+            except Exception:
+                pass
 
     if lead_candidates:
         return max(lead_candidates, key=len)
