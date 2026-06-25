@@ -13,6 +13,10 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 app = FastAPI(title="AthenaX Dashboard", docs_url=None, redoc_url=None)
 
+# Ensure DB schema is always up-to-date when the dashboard starts
+from athenax.db.database import init_db as _init_db
+_init_db()
+
 _pipeline_state = {"running": False, "last_run": None, "last_status": None, "last_error": None}
 _pipeline_lock = threading.Lock()
 
