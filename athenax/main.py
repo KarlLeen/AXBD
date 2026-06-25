@@ -30,6 +30,12 @@ def _extract_json(text: str) -> list:
     import re
     text = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
     decoder = json.JSONDecoder()
+    # Fields that only appear in Scout lead dicts, not in nested backers/team sub-arrays
+    _LEAD_ONLY_KEYS = {
+        "short_description", "sector", "stage", "github_url", "twitter_url",
+        "description", "founded", "subcategory", "backers", "team",
+        "discord_url", "docs_url", "tech_stack", "velocity_notes",
+    }
     lead_candidates: list[list] = []
     eval_candidates: list[list] = []
     other_candidates: list[list] = []
@@ -42,7 +48,10 @@ def _extract_json(text: str) -> list:
             result, _ = decoder.raw_decode(text, pos)
             if isinstance(result, list) and result and isinstance(result[0], dict):
                 first = result[0]
-                if "url" in first and "name" in first:
+                if (
+                    "url" in first and "name" in first
+                    and _LEAD_ONLY_KEYS.intersection(first.keys())
+                ):
                     lead_candidates.append(result)
                 elif "lead_url" in first or "lead_name" in first:
                     eval_candidates.append(result)
