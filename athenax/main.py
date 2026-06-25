@@ -19,63 +19,98 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _balanced_extract(text: str, start: int) -> str | None:
+    """Extract the full [...] block at `start`, correctly handling strings/escapes."""
+    depth = 0
+    in_string = False
+    escape = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if escape:
+            escape = False
+            continue
+        if in_string:
+            if ch == "\\":
+                escape = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch in ("[", "{"):
+            depth += 1
+        elif ch in ("]", "}"):
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
+def _try_parse(s: str):
+    """json.loads with trailing-comma repair fallback."""
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+    import re as _re
+    fixed = _re.sub(r",(\s*[}\]])", r"\1", s)
+    try:
+        return json.loads(fixed)
+    except json.JSONDecodeError:
+        return None
+
+
 def _extract_json(text: str) -> list:
     """Return the best JSON array of objects found in text.
 
+    Uses balanced-bracket extraction so that malformed outer arrays (which
+    raw_decode rejects outright) still get a parse attempt with repair.
+
     Priority:
-    1. Arrays whose first element has 'url'+'name' keys  (Scout lead format)
-    2. Arrays whose first element has 'lead_url'+'lead_name' keys  (Evaluator format)
-    3. Largest remaining array of dicts (fallback)
+    1. Arrays whose first element has 'url'+'name' + a Scout-only key
+    2. Arrays whose first element has 'lead_url' or 'lead_name'  (Evaluator)
+    3. Largest other array of dicts (fallback)
     """
     import re
     text = re.sub(r"```(?:json)?\s*", "", text).strip().rstrip("`").strip()
-    decoder = json.JSONDecoder()
-    # Fields that only appear in Scout lead dicts, not in nested backers/team sub-arrays
+
     _LEAD_ONLY_KEYS = {
         "short_description", "sector", "stage", "github_url", "twitter_url",
         "description", "founded", "subcategory", "backers", "team",
         "discord_url", "docs_url", "tech_stack", "velocity_notes",
+        "source", "category",
     }
+
     lead_candidates: list[list] = []
     eval_candidates: list[list] = []
     other_candidates: list[list] = []
-    start = 0
+
+    pos = 0
     while True:
-        pos = text.find("[", start)
+        pos = text.find("[", pos)
         if pos == -1:
             break
-        try:
-            result, _ = decoder.raw_decode(text, pos)
+        chunk = _balanced_extract(text, pos)
+        if chunk:
+            result = _try_parse(chunk)
             if isinstance(result, list) and result and isinstance(result[0], dict):
                 first = result[0]
-                if (
-                    "url" in first and "name" in first
-                    and _LEAD_ONLY_KEYS.intersection(first.keys())
-                ):
+                if "url" in first and "name" in first and _LEAD_ONLY_KEYS.intersection(first.keys()):
                     lead_candidates.append(result)
                 elif "lead_url" in first or "lead_name" in first:
                     eval_candidates.append(result)
                 else:
                     other_candidates.append(result)
-        except json.JSONDecodeError:
-            pass
-        start = pos + 1
-    print(f"  [DEBUG _extract_json] lead_candidates sizes: {sorted([len(x) for x in lead_candidates], reverse=True)}")
-    print(f"  [DEBUG _extract_json] eval_candidates sizes: {sorted([len(x) for x in eval_candidates], reverse=True)}")
-    print(f"  [DEBUG _extract_json] other_candidates sizes: {sorted([len(x) for x in other_candidates], reverse=True)}")
+            pos += len(chunk)
+        else:
+            pos += 1
+
     if lead_candidates:
-        best = max(lead_candidates, key=len)
-        print(f"  [DEBUG _extract_json] returning lead array len={len(best)}, first keys={list(best[0].keys())[:6]}")
-        return best
+        return max(lead_candidates, key=len)
     if eval_candidates:
-        best = max(eval_candidates, key=len)
-        print(f"  [DEBUG _extract_json] returning eval array len={len(best)}, first keys={list(best[0].keys())[:6]}")
-        return best
+        return max(eval_candidates, key=len)
     if other_candidates:
-        best = max(other_candidates, key=len)
-        print(f"  [DEBUG _extract_json] returning other array len={len(best)}, first keys={list(best[0].keys())[:6]}")
-        return best
-    print("  [DEBUG _extract_json] returning []")
+        return max(other_candidates, key=len)
     return []
 
 
@@ -374,12 +409,7 @@ def run_pipeline() -> None:
     raw_leads_text = tasks_output[0].raw if len(tasks_output) > 0 else ""
     raw_evals_text = tasks_output[1].raw if len(tasks_output) > 1 else ""
 
-    print(f"  [DEBUG] tasks_output count: {len(tasks_output)}")
-    print(f"  [DEBUG] raw_leads_text length: {len(raw_leads_text)}, starts: {raw_leads_text[:120]!r}")
-    print(f"  [DEBUG] raw_evals_text length: {len(raw_evals_text)}, starts: {raw_evals_text[:120]!r}")
-    print("  [DEBUG] --- _extract_json for LEADS ---")
     leads = _extract_json(raw_leads_text)
-    print("  [DEBUG] --- _extract_json for EVALS ---")
     evals = _extract_json(raw_evals_text)
 
     # Filter out Nouns DAO's own / affiliated projects
