@@ -250,7 +250,9 @@ string "not found". Exceptions:
 NAME & DESCRIPTIONS
 • name — official project/company name
 • short_description — one sentence (≤15 words) for a listing header. What it does, plainly.
-• description — 2–4 sentence "About" paragraph. What it builds, why it matters, key traction.
+• description — the longer "About" paragraph (2–4 sentences), more detailed than
+                short_description: what the project builds, HOW it works / what you can
+                actually do with it (its functionality), why it matters, and any key traction.
 
 CLASSIFICATION
 • category — MUST be exactly one of:
@@ -307,13 +309,15 @@ TEAM (search LinkedIn, the website /team or /about page, Crunchbase, and Twitter
 
   Empty array [] only if the project genuinely has no discoverable team.
 
-VOICES (external mentions — NOT from the project itself)
-• voices — JSON array of external coverage. For each item:
-  - url (link to the article, tweet, or post)
-  - source (e.g. "TechCrunch", "a16z blog", "@elonmusk on X")
-  - summary (one sentence: what was said)
-  Search "[project name] mentioned by" and "[project name] news 2025 2026".
-  Empty array [] if none found.
+VOICES (external mentions — NOT the project's own posts)
+• voices — JSON array of third-party coverage from the wider world: press/news about the
+  project and mentions by notable people — PRIMARILY from X/Twitter (influential accounts,
+  VCs, founders), plus articles/podcasts. For each item:
+  - url     — direct link to the article, tweet, or post
+  - source  — who said it (e.g. "TechCrunch", "a16z blog", "@naval on X")
+  - summary — one sentence on what was said
+  Search "[project name] mentioned by", "[project name] news 2025 2026",
+  and "[project name] site:x.com". Empty array [] if none found.
 
 BOUNTIES (reward programs the project runs)
 • bounties — JSON array. For each:
