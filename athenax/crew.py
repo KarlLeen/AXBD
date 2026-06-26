@@ -287,15 +287,25 @@ BACKERS
   Search "[project name] investors", "[project name] backed by", "[project name] raised from".
   Examples: ["a16z", "Paradigm", "YC W26", "Sequoia"]. Empty array [] if none found.
 
-TEAM (search LinkedIn, website /team page, Twitter bios)
-• team — JSON array of team members. For each person try to find:
-  - name (full name)
-  - title (job title / role)
-  - bio (2–4 bullet points: top university, previous companies, notable achievements)
-  - linkedin (LinkedIn profile URL, or "not found")
-  - twitter (Twitter handle, or "not found")
-  (title and bio also use "not found" if you cannot find them for that person)
-  Aim for 2–5 team members. Empty array [] if none found.
+TEAM (search LinkedIn, the website /team or /about page, Crunchbase, and Twitter bios)
+• team — JSON array of the FOUNDERS + key leadership. Get EVERY co-founder you can find
+  (most projects have 2–3); aim for 2–5 people. Do not stop at one person.
+  Each member MUST have all four parts at this granularity:
+  - name    — full name (e.g. "Amjad Masad")
+  - title   — job title / role (e.g. "Co founder and CEO", "Executive Chair")
+  - bio     — ONE substantive sentence: what they do here AND their background. Call out
+              concrete signals when findable: a top university, a previous top-10 / well-known
+              company, a company acquired by a major firm, or a notable achievement.
+              (NOT a vague filler line — say something specific.)
+  - linkedin — FULL LinkedIn profile URL (e.g. "https://www.linkedin.com/in/amjadmasad"), or "not found"
+  - twitter  — FULL X/Twitter profile URL (e.g. "https://x.com/amasad") when available, else "not found"
+
+  Reference granularity — this is the depth expected for ONE project's team (Replit):
+    Amjad Masad | Co founder and CEO | Leads Replit and its AI software development platform | https://www.linkedin.com/in/amjadmasad | https://x.com/amasad
+    Haya Odeh | Co founder | Supports product and operations across Replit's developer platform | https://www.linkedin.com/in/haya-odeh-b0725928/
+    Faris Masad | Co founder | Supports engineering and development of Replit's collaborative coding platform | https://www.linkedin.com/in/faris-masad-219b0515b/
+
+  Empty array [] only if the project genuinely has no discoverable team.
 
 VOICES (external mentions — NOT from the project itself)
 • voices — JSON array of external coverage. For each item:

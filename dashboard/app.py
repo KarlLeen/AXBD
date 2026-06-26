@@ -452,7 +452,7 @@ HTML = r"""<!DOCTYPE html>
                           <a :href="member.linkedin" target="_blank" class="text-xs text-blue-500 hover:underline">LinkedIn</a>
                         </template>
                         <template x-if="has(member.twitter)">
-                          <a :href="'https://x.com/' + member.twitter.replace('@','')" target="_blank" class="text-xs text-sky-500 hover:underline" x-text="member.twitter"></a>
+                          <a :href="member.twitter.startsWith('http') ? member.twitter : 'https://x.com/' + member.twitter.replace('@','')" target="_blank" class="text-xs text-sky-500 hover:underline">Twitter</a>
                         </template>
                       </div>
                       <p x-show="member.bio" class="text-xs text-slate-500 mt-1 leading-relaxed" x-text="member.bio"></p>
