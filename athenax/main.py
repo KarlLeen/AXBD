@@ -12,7 +12,7 @@ _PROJECT_ROOT = Path(__file__).parent.parent
 load_dotenv(_PROJECT_ROOT / ".env")
 
 from athenax.db.database import get_connection, init_db
-from athenax.crew import build_crew
+from athenax.crew import build_crew, build_scout_crew, build_evaluator_crew
 
 
 def _now() -> str:
@@ -422,6 +422,106 @@ def _push_pipeline_results(lead_id_map: dict, eval_id_map: dict) -> None:
             failed += 1
 
     print(f"    AthenaX sync: {pushed} pushed, {skipped} already existed, {failed} failed")
+
+
+def run_scout() -> dict[str, str]:
+    """Decoupled Scout step — discover and save leads only (no evaluation)."""
+    init_db()
+    print("\n🔍  Scout: discovering leads...\n")
+
+    crew = build_scout_crew()
+    result = crew.kickoff()
+    tasks_output = getattr(result, "tasks_output", [])
+    raw_leads_text = tasks_output[0].raw if tasks_output else ""
+    leads = _extract_json(raw_leads_text)
+
+    from athenax.filters import filter_leads
+    leads, excluded = filter_leads(leads)
+    if excluded:
+        print(f"\n🚫  Excluded {len(excluded)} Nouns-affiliated lead(s):")
+        for e in excluded:
+            print(f"     - {e.get('name','?')} — {e['_exclusion_reason']}")
+
+    print(f"\n📦  Scout found    : {len(leads)} leads (after exclusions)")
+    lead_id_map = _save_leads(leads)
+    print(f"✅  Saved {len(lead_id_map)} leads to athenax.db.\n")
+    return lead_id_map
+
+
+def run_evaluation() -> dict[str, str]:
+    """Decoupled Evaluate step — score every lead that has no evaluation yet."""
+    init_db()
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            """SELECT l.* FROM leads l
+               WHERE l.id NOT IN (SELECT lead_id FROM evaluations)
+               ORDER BY l.created_at"""
+        ).fetchall()
+
+    leads = []
+    for row in rows:
+        d = dict(row)
+        for field in ("tech_stack", "bd_twitter_handles", "backers",
+                      "team", "voices", "bounties", "other_links"):
+            if isinstance(d.get(field), str):
+                try:
+                    d[field] = json.loads(d[field])
+                except Exception:
+                    pass
+        leads.append(d)
+
+    if not leads:
+        print("\n📊  Evaluate: no pending leads to evaluate.\n")
+        return {}
+
+    print(f"\n📊  Evaluate: scoring {len(leads)} pending lead(s)...\n")
+    leads_json = json.dumps(leads, ensure_ascii=False, indent=2)
+
+    crew = build_evaluator_crew(leads_json)
+    result = crew.kickoff()
+    raw = result.tasks_output[0].raw if getattr(result, "tasks_output", None) else ""
+    evals = _extract_json(raw)
+
+    if not evals and raw.strip():
+        # Evaluator returned prose instead of JSON — convert it via a direct call.
+        print("\n[WARN] Evaluator output was not JSON — converting analysis to JSON...")
+        import os
+        import litellm
+        conversion = litellm.completion(
+            model="deepseek/deepseek-chat",
+            api_key=os.environ["DEEPSEEK_API_KEY"],
+            base_url="https://api.deepseek.com/v1",
+            temperature=0.1,
+            max_tokens=8192,
+            messages=[
+                {"role": "system", "content": (
+                    "You convert evaluation analysis text into a JSON array. "
+                    "Return ONLY a valid JSON array — no markdown fences, no commentary. "
+                    "Each object must have: lead_name, lead_url, sector, project_type, "
+                    "compatibility_score, disqualifiers_checked, minimum_requirements_met, "
+                    "signal_boosters, velocity_assessment, nounish_traits, "
+                    "reason_for_partnership, listing_fit_notes, score_breakdown, criteria_detail."
+                )},
+                {"role": "user", "content": (
+                    "Convert this evaluation analysis into a JSON array. "
+                    "Only include leads that scored ≥ 55. Return ONLY the JSON array:\n\n" + raw
+                )},
+            ],
+        )
+        evals = _extract_json(conversion.choices[0].message.content or "")
+
+    if not evals:
+        print("\n[WARN] No evaluations parsed from Evaluator output.")
+        return {}
+
+    with get_connection() as conn:
+        name_rows = conn.execute("SELECT name, id FROM leads").fetchall()
+    lead_id_map = {r[0]: r[1] for r in name_rows}
+
+    eval_id_map = _save_evaluations(evals, lead_id_map)
+    print(f"\n✅  Saved {len(eval_id_map)} new evaluation(s) to athenax.db.\n")
+    return eval_id_map
 
 
 def run_pipeline() -> None:

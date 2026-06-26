@@ -17,40 +17,48 @@ app = FastAPI(title="AthenaX Dashboard", docs_url=None, redoc_url=None)
 from athenax.db.database import init_db as _init_db
 _init_db()
 
-_pipeline_state = {"running": False, "last_run": None, "last_status": None,
-                   "last_error": None, "last_leads_added": None, "last_total": None}
+_pipeline_state = {"running": False, "step": None, "last_run": None,
+                   "last_status": None, "last_error": None, "last_step": None,
+                   "last_added": None, "last_total": None}
 _pipeline_lock = threading.Lock()
 
 
-def _count_leads() -> int:
+def _count(table: str) -> int:
     try:
         with _db() as conn:
-            return conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
+            return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
     except Exception:
         return 0
 
 
-def _run_pipeline_bg():
-    from athenax.main import run_pipeline
-    before = _count_leads()
+# step -> (callable name in athenax.main, table whose row count we report)
+_STEPS = {
+    "scout":    ("run_scout",      "leads"),
+    "evaluate": ("run_evaluation", "evaluations"),
+    "pipeline": ("run_pipeline",   "leads"),
+}
+
+
+def _run_step_bg(step: str):
+    import athenax.main as _main
+    fn_name, table = _STEPS[step]
+    fn = getattr(_main, fn_name)
+    before = _count(table)
     with _pipeline_lock:
-        _pipeline_state["running"] = True
-        _pipeline_state["last_error"] = None
+        _pipeline_state.update(running=True, step=step, last_error=None)
     try:
-        run_pipeline()
-        after = _count_leads()
+        fn()
+        after = _count(table)
         with _pipeline_lock:
-            _pipeline_state["last_status"] = "ok"
-            _pipeline_state["last_leads_added"] = after - before
-            _pipeline_state["last_total"] = after
+            _pipeline_state.update(last_status="ok", last_step=step,
+                                   last_added=after - before, last_total=after)
     except Exception as exc:
         with _pipeline_lock:
-            _pipeline_state["last_status"] = "error"
-            _pipeline_state["last_error"] = str(exc)
+            _pipeline_state.update(last_status="error", last_step=step, last_error=str(exc))
     finally:
         with _pipeline_lock:
-            _pipeline_state["running"] = False
-            _pipeline_state["last_run"] = datetime.now(timezone.utc).isoformat()
+            _pipeline_state.update(running=False, step=None,
+                                   last_run=datetime.now(timezone.utc).isoformat())
 
 
 @app.middleware("http")
@@ -134,13 +142,27 @@ def pipeline_status():
         return dict(_pipeline_state)
 
 
-@app.post("/api/pipeline/run")
-def trigger_run():
+def _start_step(step: str):
     with _pipeline_lock:
         if _pipeline_state["running"]:
-            raise HTTPException(status_code=409, detail="Pipeline already running")
-    threading.Thread(target=_run_pipeline_bg, daemon=True).start()
-    return {"started": True}
+            raise HTTPException(status_code=409, detail="A run is already in progress")
+    threading.Thread(target=_run_step_bg, args=(step,), daemon=True).start()
+    return {"started": True, "step": step}
+
+
+@app.post("/api/scout/run")
+def trigger_scout():
+    return _start_step("scout")
+
+
+@app.post("/api/evaluate/run")
+def trigger_evaluate():
+    return _start_step("evaluate")
+
+
+@app.post("/api/pipeline/run")
+def trigger_run():
+    return _start_step("pipeline")
 
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
@@ -187,17 +209,31 @@ HTML = r"""<!DOCTYPE html>
     </div>
     <div class="flex items-center gap-3">
       <span class="text-xs text-slate-400" x-text="lastRefresh"></span>
-      <button @click="runPipeline()" :disabled="pipelineRunning"
+      <!-- Scout: discover + save leads only -->
+      <button @click="runScout()" :disabled="pipelineRunning" title="Discover and save new leads (no scoring)"
         class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
         :class="pipelineRunning ? 'bg-indigo-50 border border-indigo-200 text-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700 text-white'">
-        <svg x-show="!pipelineRunning" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg x-show="runningStep !== 'scout'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
         </svg>
-        <svg x-show="pipelineRunning" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+        <svg x-show="runningStep === 'scout'" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
         </svg>
-        <span x-text="pipelineRunning ? 'Running…' : 'Run Pipeline'"></span>
+        <span x-text="runningStep === 'scout' ? 'Scouting…' : 'Scout'"></span>
+      </button>
+      <!-- Evaluate: score all unevaluated leads -->
+      <button @click="runEvaluate()" :disabled="pipelineRunning" title="Score every lead that has no evaluation yet"
+        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+        :class="pipelineRunning ? 'bg-green-50 border border-green-200 text-green-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white'">
+        <svg x-show="runningStep !== 'evaluate'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        <svg x-show="runningStep === 'evaluate'" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        <span x-text="runningStep === 'evaluate' ? 'Evaluating…' : 'Evaluate'"></span>
       </button>
       <button @click="refresh()"
         class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
@@ -561,6 +597,7 @@ function app() {
     filterCat: '',
     filterEval: '',
     pipelineRunning: false,
+    runningStep: null,
     pipelineMsg: '',
     pipelineMsgType: 'ok',
     _pollTimer: null,
@@ -596,6 +633,7 @@ function app() {
         const s = await this.getJSON('/api/pipeline/status');
         const was = this.pipelineRunning;
         this.pipelineRunning = s.running;
+        this.runningStep = s.step;
         if (was && !s.running) {
           await this.refresh();
           clearInterval(this._pollTimer);
@@ -606,36 +644,43 @@ function app() {
     },
 
     showPipelineResult(s) {
+      const label = { scout: 'Scout', evaluate: 'Evaluate', pipeline: 'Pipeline' }[s.last_step] || 'Run';
+      const noun  = s.last_step === 'evaluate' ? 'evaluation' : 'lead';
       if (s.last_status === 'error') {
-        this.pipelineMsg = 'Pipeline failed: ' + (s.last_error || 'unknown error');
+        this.pipelineMsg = `${label} failed: ` + (s.last_error || 'unknown error');
         this.pipelineMsgType = 'error';
       } else if (s.last_status === 'ok') {
-        const n = s.last_leads_added;
-        if (s.last_total === 0) {
-          this.pipelineMsg = 'Pipeline finished but saved 0 leads — Scout output was empty or unparseable. Check the server logs.';
+        const n = s.last_added;
+        if (n > 0) {
+          this.pipelineMsg = `${label} finished — ${n} new ${noun}${n===1?'':'s'} (${s.last_total} total).`;
+          this.pipelineMsgType = 'ok';
+        } else if (s.last_step === 'evaluate') {
+          this.pipelineMsg = `${label} finished — no new evaluations (nothing pending, or none scored ≥ 55). Check the logs.`;
           this.pipelineMsgType = 'warn';
-        } else if (n > 0) {
-          this.pipelineMsg = `Pipeline finished — ${n} new lead${n===1?'':'s'} added (${s.last_total} total).`;
-          this.pipelineMsgType = 'ok';
         } else {
-          this.pipelineMsg = `Pipeline finished — no new leads (${s.last_total} total; existing may have been updated).`;
-          this.pipelineMsgType = 'ok';
+          this.pipelineMsg = `${label} finished — no new leads saved. Output may have been empty or unparseable; check the logs.`;
+          this.pipelineMsgType = 'warn';
         }
       }
     },
 
-    async runPipeline() {
+    runScout()    { return this._startStep('/api/scout/run',    'Scout'); },
+    runEvaluate() { return this._startStep('/api/evaluate/run', 'Evaluate'); },
+
+    async _startStep(url, label) {
       if (this.pipelineRunning) return;
       try {
-        const r = await fetch('/api/pipeline/run', { method: 'POST' });
+        const r = await fetch(url, { method: 'POST' });
         if (r.ok) {
           this.pipelineRunning = true;
+          const d = await r.json();
+          this.runningStep = d.step;
           this._pollTimer = setInterval(() => this.checkPipelineStatus(), 10000);
         } else {
-          const d = await r.json();
-          this.errorMsg = d.detail || 'Failed to start pipeline';
+          const d = await r.json().catch(() => ({}));
+          this.errorMsg = d.detail || ('Failed to start ' + label);
         }
-      } catch(e) { this.errorMsg = 'Failed to start pipeline'; }
+      } catch(e) { this.errorMsg = 'Failed to start ' + label; }
     },
 
     async getJSON(url) {

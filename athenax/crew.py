@@ -447,3 +447,108 @@ Return your results as a JSON array.
         tasks=[scout_task, evaluator_task],
         verbose=True,
     )
+
+
+def build_scout_crew() -> Crew:
+    """Scout-only crew (discovery, no evaluation) for the decoupled Scout step.
+
+    Reuses build_crew()'s scout agent + task (which has no context dependency)
+    and drops the evaluator, so the Scout step can run on its own.
+    """
+    full = build_crew()
+    return Crew(agents=[full.agents[0]], tasks=[full.tasks[0]], verbose=True)
+
+
+def build_evaluator_crew(leads_json: str) -> Crew:
+    """Evaluator-only crew for the decoupled Evaluate step.
+
+    Scores leads passed in as JSON (loaded from the DB) rather than via the
+    Scout's in-memory context, so evaluation can run independently of scouting.
+    Single source of truth for the standalone evaluator (dashboard + script).
+    """
+    llm = build_llm()
+    evaluator = build_evaluator(llm=llm, tools=[CoinGeckoTool()])
+
+    eval_task = Task(
+        description=f"""
+You have received raw leads from the Scout. Apply the AthenaX selection criteria rigorously.
+
+━━━ LEADS TO EVALUATE ━━━
+{leads_json}
+
+━━━ STEP 1 — HARD DISQUALIFIERS (check first, reject immediately if any apply) ━━━
+{DISQUALIFIERS}
+
+━━━ STEP 2 — CLASSIFY each surviving lead ━━━
+• "new"         → pre-PMF, early GTM, or actively fundraising (70% bucket)
+• "established" → recognized market leader or Tier 1/2 player (30% bucket)
+
+━━━ STEP 3 — SCORE 0–100 ━━━
+
+For NEW projects:
+{NEW_PROJECT_CRITERIA}
+
+Base score starts at 40 if all minimum requirements are met.
+Add signal booster points as listed above.
+Apply velocity multiplier: if growth rate is exceptional, multiply total by up to 1.3×.
+For GitHub repos: use commits_last_30d as velocity signal (>50 commits/month = strong).
+Cap at 100.
+
+For ESTABLISHED crypto projects: use the coingecko_search tool to verify they are
+actually listed. A Tier 1 project must have a CoinGecko market_cap_rank ≤ 50.
+
+For ESTABLISHED projects:
+{ESTABLISHED_PROJECT_CRITERIA}
+
+Score based on tier (Tier 1 = 85–100, Tier 2 = 70–84), sector leadership, and active development.
+
+━━━ STEP 4 — EVALUATE ALL LEADS ━━━
+{PIPELINE_MIX}
+Evaluate EVERY lead that passes the disqualifier check. Do NOT limit to a subset.
+Discard only leads that score below 55 — include everything else in your output.
+
+━━━ STEP 5 — PRODUCE DETAILED EVALUATION ━━━
+For EVERY surviving lead, produce a full criteria breakdown so the reviewer can
+see exactly why it scored the way it did. If the Scout did not provide a field
+(e.g. github_stars is null) and you need it to evaluate, call the github_search
+or coingecko_search tool to fetch it. Do not leave a criterion unevaluated.
+
+For each criterion record:
+• met: true / false / null (null = data unavailable after attempting to fetch)
+• note: short factual note (the actual data or why it's missing)
+
+Return your results as a JSON array.
+""",
+        expected_output=(
+            "A JSON array of ALL evaluated leads that scored ≥ 55 (no upper limit on count), each with: "
+            "lead_name, lead_url, sector (one of the 7 sectors), "
+            "project_type ('new' or 'established'), "
+            "compatibility_score (int 0–100), "
+            "disqualifiers_checked (bool — true means passed all checks), "
+            "minimum_requirements_met (bool, new projects only), "
+            "signal_boosters (string array — e.g. ['YC W25', 'a16z portfolio']), "
+            "velocity_assessment (1 sentence on growth trajectory), "
+            "nounish_traits (string array — keep for Nouns DAO context), "
+            "reason_for_partnership (1–2 sentences — why AthenaX incubation/distribution fits this project), "
+            "listing_fit_notes (1 sentence — which AthenaX value prop is most relevant: capital alignment, distribution, narrative, or ecosystem access), "
+            "score_breakdown (object): { "
+            "  base_score (int — 40 for new if minimums met, or tier-based for established), "
+            "  booster_points (int — sum of signal booster points awarded), "
+            "  velocity_multiplier (float — 1.0–1.3), "
+            "  boosters_detail (array of {signal, points, note}) "
+            "}, "
+            "criteria_detail (object with per-criterion result): { "
+            "  working_product: {met, note}, "
+            "  website: {met, note}, "
+            "  github: {met, stars, commits_last_30d, note}, "
+            "  twitter: {met, followers, note}, "
+            "  team: {met, note}, "
+            "  sector_fit: {met, note}, "
+            "  active_development: {met, note}, "
+            "  market_presence: {met, note} "
+            "}."
+        ),
+        agent=evaluator,
+    )
+
+    return Crew(agents=[evaluator], tasks=[eval_task], verbose=True)
