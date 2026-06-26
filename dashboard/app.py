@@ -300,7 +300,7 @@ HTML = r"""<!DOCTYPE html>
             <span x-show="lead.stage" class="text-xs px-1.5 py-0.5 rounded font-medium"
                   :class="stageClass(lead.stage)" x-text="lead.stage"></span>
             <!-- Founded -->
-            <span x-show="lead.founded" class="text-xs text-slate-400" x-text="'est. ' + lead.founded"></span>
+            <span x-show="has(lead.founded)" class="text-xs text-slate-400" x-text="'est. ' + lead.founded"></span>
           </div>
           <p x-show="lead.short_description" class="text-xs text-slate-400 mt-0.5 truncate" x-text="lead.short_description"></p>
         </div>
@@ -336,26 +336,26 @@ HTML = r"""<!DOCTYPE html>
             <div>
               <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Links</p>
               <div class="flex flex-wrap gap-2">
-                <template x-if="lead.website || lead.url">
-                  <a :href="lead.website || lead.url" target="_blank"
+                <template x-if="has(lead.website) || has(lead.url)">
+                  <a :href="has(lead.website) ? lead.website : lead.url" target="_blank"
                      class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition-colors">🌐 Website</a>
                 </template>
-                <template x-if="lead.github_url">
+                <template x-if="has(lead.github_url)">
                   <a :href="lead.github_url" target="_blank"
                      class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition-colors">
                     <span>GitHub</span>
                     <span x-show="lead.github_stars" class="text-slate-400 ml-1" x-text="'⭐'+lead.github_stars.toLocaleString()"></span>
                   </a>
                 </template>
-                <template x-if="lead.twitter_url">
+                <template x-if="has(lead.twitter_url)">
                   <a :href="lead.twitter_url" target="_blank"
                      class="text-xs px-2.5 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-600 font-medium transition-colors">𝕏 Twitter</a>
                 </template>
-                <template x-if="lead.discord_url">
+                <template x-if="has(lead.discord_url)">
                   <a :href="lead.discord_url" target="_blank"
                      class="text-xs px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-medium transition-colors">Discord</a>
                 </template>
-                <template x-if="lead.docs_url">
+                <template x-if="has(lead.docs_url)">
                   <a :href="lead.docs_url" target="_blank"
                      class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium transition-colors">📄 Docs</a>
                 </template>
@@ -386,10 +386,10 @@ HTML = r"""<!DOCTYPE html>
                       <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-sm font-semibold text-slate-800" x-text="member.name"></span>
                         <span class="text-xs text-slate-500" x-text="member.title"></span>
-                        <template x-if="member.linkedin">
+                        <template x-if="has(member.linkedin)">
                           <a :href="member.linkedin" target="_blank" class="text-xs text-blue-500 hover:underline">LinkedIn</a>
                         </template>
-                        <template x-if="member.twitter">
+                        <template x-if="has(member.twitter)">
                           <a :href="'https://x.com/' + member.twitter.replace('@','')" target="_blank" class="text-xs text-sky-500 hover:underline" x-text="member.twitter"></a>
                         </template>
                       </div>
@@ -533,7 +533,7 @@ HTML = r"""<!DOCTYPE html>
                 </div>
 
                 <!-- Contact email -->
-                <div x-show="lead.contact_email">
+                <div x-show="has(lead.contact_email)">
                   <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Contact Email</p>
                   <a :href="'mailto:' + lead.contact_email"
                      class="text-xs text-indigo-500 hover:underline" x-text="lead.contact_email"></a>
@@ -652,6 +652,11 @@ function app() {
         try { this.allLeads = await this.getJSON('/api/leads'); } catch(e) { this.errorMsg = e.message; }
         this.lastRefresh = 'Updated ' + new Date().toLocaleTimeString();
       } finally { this.loading = false; }
+    },
+
+    // Treat the Scout's "not found" placeholder (and empty values) as absent.
+    has(v) {
+      return v != null && v !== '' && v !== 'not found' && v !== 'Not Found';
     },
 
     srcClass(s) {

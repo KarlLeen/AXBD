@@ -234,9 +234,18 @@ FOR EACH LEAD — COLLECT ALL OF THE FOLLOWING:
 ④ Web (Serper) — search "[project name] funding" and "[project name] team founders"
                  to surface backers, founding date, and team info.
 ⑤ Contact email — search for bd@, partnerships@, hello@ at the project's domain.
-                  Only record if you found real evidence. Null if not found.
+                  Only record a real address you found evidence for; otherwise "not found".
 
-━━━ PROFILE FIELDS (fill as completely as possible) ━━━
+━━━ PROFILE FIELDS — EVERY field below is MANDATORY in each lead object ━━━
+RULE: collect all of these first. Never omit a field and never leave one blank. If, after
+genuinely searching with all your tools, you cannot find a value, set that field to the exact
+string "not found". Exceptions:
+  (a) url / website must ALWAYS be a real URL — it is the project's identity and dedup key, so
+      only output projects that actually have one (never "not found" here).
+  (b) list fields (other_links, backers, team, voices, bounties, bd_twitter_handles) use an
+      empty array [] when nothing is found.
+  (c) numeric signals (github_stars, github_forks, commits_last_30d/90d, twitter_followers)
+      stay numbers, or null if unknown — do NOT write "not found" for numbers.
 
 NAME & DESCRIPTIONS
 • name — official project/company name
@@ -263,7 +272,7 @@ STAGE — pick the best match:
 
 FOUNDING
 • founded — year the project was founded (e.g. "2023"). Search LinkedIn, Crunchbase,
-             website footer. Null if not found.
+             website footer. "not found" if no founding year can be found.
 
 LINKS (collect every link you can find)
 • website — main product/company URL
@@ -283,8 +292,9 @@ TEAM (search LinkedIn, website /team page, Twitter bios)
   - name (full name)
   - title (job title / role)
   - bio (2–4 bullet points: top university, previous companies, notable achievements)
-  - linkedin (LinkedIn profile URL or null)
-  - twitter (Twitter handle or null)
+  - linkedin (LinkedIn profile URL, or "not found")
+  - twitter (Twitter handle, or "not found")
+  (title and bio also use "not found" if you cannot find them for that person)
   Aim for 2–5 team members. Empty array [] if none found.
 
 VOICES (external mentions — NOT from the project itself)
@@ -314,7 +324,7 @@ SOCIAL SIGNALS
 
 VELOCITY
 • velocity_notes — one sentence on any evidence of rapid recent growth.
-• conference_origin — e.g. "ETHGlobal Bangkok winner", "YC W26", null if none.
+• conference_origin — e.g. "ETHGlobal Bangkok winner", "YC W26", "not found" if none.
 
 ━━━ ACTIVITY CHECK ━━━
 • Set status = "inactive" if: repo archived, commits_last_90d == 0, or project announced shutdown.
@@ -324,12 +334,15 @@ Return a single, COMPLETE JSON array of EXACTLY 5 ACTIVE leads — never more th
 the array is fully closed (ends with `]`). A truncated array loses every lead.
 """,
         expected_output=(
-            "A JSON array of active leads only. Each object has: "
+            "A JSON array of EXACTLY 5 active leads. Every field below is present on every "
+            "object; any scalar value that could not be found is the string \"not found\" "
+            "(except url/website which is always a real URL, list fields which are [] when "
+            "empty, and numeric signals which stay numbers or null). Each object has: "
             "source, name, url, status ('active'), "
             "short_description, description, "
             "category (one of the 7 exact category names), subcategory (free-form niche tag), "
             "stage ('Active'|'Active Development'|'Beta'|'Seed'|'Series A'|'Series B'|'Acquired'), "
-            "founded (year string or null), "
+            "founded (year string or 'not found'), "
             "website (URL), github_url, twitter_url, discord_url, docs_url, "
             "other_links (array of URLs), "
             "backers (array of strings — VC/angel/accelerator names), "
