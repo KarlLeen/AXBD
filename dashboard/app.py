@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 load_dotenv(Path(__file__).parent.parent / ".env")
 
@@ -165,6 +165,23 @@ def trigger_run():
     return _start_step("pipeline")
 
 
+@app.get("/api/export/xlsx")
+def export_xlsx():
+    """Download every lead (the accumulated list) as an .xlsx in the AthenaX
+    project-list format — ready to import into Google Sheets."""
+    from datetime import date
+    from athenax.export import build_xlsx
+    with _db() as conn:
+        rows = conn.execute("SELECT * FROM leads ORDER BY created_at").fetchall()
+    data = build_xlsx([dict(r) for r in rows])
+    fname = f"athenax_leads_{date.today().isoformat()}.xlsx"
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
 # ── HTML ──────────────────────────────────────────────────────────────────────
 
 HTML = r"""<!DOCTYPE html>
@@ -235,6 +252,15 @@ HTML = r"""<!DOCTYPE html>
         </svg>
         <span x-text="runningStep === 'evaluate' ? 'Evaluating…' : 'Evaluate'"></span>
       </button>
+      <!-- Export: download the full accumulated lead list as .xlsx (import into Google Sheets) -->
+      <a href="/api/export/xlsx"
+        title="Download all leads as .xlsx — import into Google Sheets"
+        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+        Export
+      </a>
       <button @click="refresh()"
         class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors">
         <svg class="w-3.5 h-3.5" :class="loading && 'animate-spin'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
