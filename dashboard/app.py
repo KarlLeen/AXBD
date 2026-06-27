@@ -165,6 +165,21 @@ def trigger_run():
     return _start_step("pipeline")
 
 
+@app.post("/api/leads/clear")
+def clear_leads():
+    """Wipe all leads + evaluations + drafts (admin reset for a clean re-scout)."""
+    with _pipeline_lock:
+        if _pipeline_state["running"]:
+            raise HTTPException(status_code=409, detail="A run is in progress — wait for it to finish")
+    with _db() as conn:
+        n = conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
+        conn.execute("DELETE FROM outreach_drafts")
+        conn.execute("DELETE FROM evaluations")
+        conn.execute("DELETE FROM leads")
+        conn.commit()
+    return {"cleared": n}
+
+
 @app.get("/api/export/xlsx")
 def export_xlsx():
     """Download every lead (the accumulated list) as an .xlsx in the AthenaX
@@ -267,6 +282,14 @@ HTML = r"""<!DOCTYPE html>
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
         </svg>
         Refresh
+      </button>
+      <!-- Clear: wipe all leads + evaluations for a clean re-scout -->
+      <button @click="clearLeads()" :disabled="pipelineRunning" title="Delete ALL leads and evaluations from the database"
+        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 transition-colors">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+        Clear
       </button>
     </div>
   </div>
@@ -692,6 +715,23 @@ function app() {
 
     runScout()    { return this._startStep('/api/scout/run',    'Scout'); },
     runEvaluate() { return this._startStep('/api/evaluate/run', 'Evaluate'); },
+
+    async clearLeads() {
+      if (this.pipelineRunning) return;
+      if (!confirm('Delete ALL leads and evaluations from the database? This cannot be undone.')) return;
+      try {
+        const r = await fetch('/api/leads/clear', { method: 'POST' });
+        if (r.ok) {
+          const d = await r.json();
+          this.pipelineMsg = `Cleared ${d.cleared} lead${d.cleared===1?'':'s'} and their evaluations.`;
+          this.pipelineMsgType = 'warn';
+          await this.refresh();
+        } else {
+          const d = await r.json().catch(() => ({}));
+          this.errorMsg = d.detail || 'Failed to clear';
+        }
+      } catch(e) { this.errorMsg = 'Failed to clear'; }
+    },
 
     async _startStep(url, label) {
       if (this.pipelineRunning) return;
