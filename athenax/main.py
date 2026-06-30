@@ -425,10 +425,59 @@ def _push_pipeline_results(lead_id_map: dict, eval_id_map: dict) -> None:
 
 
 def run_submit() -> None:
-    """Submit step — push all evaluated leads to AthenaX (skip already-pushed)."""
+    """Submit step — push all scouted leads to AthenaX (skip already-submitted).
+    Does not require evaluation — submits any lead that hasn't been pushed yet."""
     init_db()
-    print("\n📤  Submit: pushing evaluated leads to AthenaX...\n")
-    _push_pipeline_results({}, {})
+    print("\n📤  Submit: pushing leads to AthenaX...\n")
+
+    from athenax.api.athenax_client import AthenaXClient
+    client = AthenaXClient()
+
+    with get_connection() as conn:
+        all_leads = [dict(r) for r in conn.execute("SELECT * FROM leads").fetchall()]
+        eval_map = {
+            row["lead_id"]: dict(row)
+            for row in conn.execute("SELECT * FROM evaluations").fetchall()
+        }
+
+    pushed = skipped = failed = 0
+
+    for lead in all_leads:
+        name = lead.get("name", "")
+
+        if lead.get("remote_lead_id"):
+            skipped += 1
+            continue
+
+        eval_row = eval_map.get(lead["id"], {})
+
+        try:
+            category_id = client.resolve_category_id(lead.get("sector", ""))
+
+            existing = client.get_product_by_name(name)
+            if existing:
+                remote_id = str(existing.get("id", ""))
+                with get_connection() as conn:
+                    conn.execute("UPDATE leads SET remote_lead_id=? WHERE id=?",
+                                 (remote_id, lead["id"]))
+                    conn.commit()
+                print(f"  ↩ Already exists: {name} (id={remote_id[:8]}…)")
+                skipped += 1
+                continue
+
+            product_id = client.push_product(lead, eval_row, category_id)
+            with get_connection() as conn:
+                conn.execute("UPDATE leads SET remote_lead_id=? WHERE id=?",
+                             (product_id, lead["id"]))
+                conn.commit()
+            print(f"  ✓ Created (PENDING): {name} → id={product_id[:8]}…")
+            pushed += 1
+
+        except Exception as exc:
+            print(f"  [WARN] push failed for '{name}': {exc}")
+            failed += 1
+
+    print(f"\n    AthenaX sync: {pushed} pushed, {skipped} already submitted, {failed} failed")
 
 
 def run_scout() -> dict[str, str]:
