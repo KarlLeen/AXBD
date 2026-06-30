@@ -424,6 +424,13 @@ def _push_pipeline_results(lead_id_map: dict, eval_id_map: dict) -> None:
     print(f"    AthenaX sync: {pushed} pushed, {skipped} already existed, {failed} failed")
 
 
+def run_submit() -> None:
+    """Submit step — push all evaluated leads to AthenaX (skip already-pushed)."""
+    init_db()
+    print("\n📤  Submit: pushing evaluated leads to AthenaX...\n")
+    _push_pipeline_results({}, {})
+
+
 def run_scout() -> dict[str, str]:
     """Decoupled Scout step — discover and save leads only (no evaluation)."""
     init_db()

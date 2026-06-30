@@ -26,6 +26,10 @@ _pipeline_lock = threading.Lock()
 def _count(table: str) -> int:
     try:
         with _db() as conn:
+            if table == "leads_submitted":
+                return conn.execute(
+                    "SELECT COUNT(*) FROM leads WHERE remote_lead_id IS NOT NULL"
+                ).fetchone()[0]
             return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
     except Exception:
         return 0
@@ -35,6 +39,7 @@ def _count(table: str) -> int:
 _STEPS = {
     "scout":    ("run_scout",      "leads"),
     "evaluate": ("run_evaluation", "evaluations"),
+    "submit":   ("run_submit",     "leads_submitted"),
     "pipeline": ("run_pipeline",   "leads"),
 }
 
@@ -160,6 +165,11 @@ def trigger_evaluate():
     return _start_step("evaluate")
 
 
+@app.post("/api/submit/run")
+def trigger_submit():
+    return _start_step("submit")
+
+
 @app.post("/api/pipeline/run")
 def trigger_run():
     return _start_step("pipeline")
@@ -266,6 +276,19 @@ HTML = r"""<!DOCTYPE html>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
         </svg>
         <span x-text="runningStep === 'evaluate' ? 'Evaluating…' : 'Evaluate'"></span>
+      </button>
+      <!-- Submit: push evaluated leads to athenax.co via Internal API -->
+      <button @click="runSubmit()" :disabled="pipelineRunning" title="Push evaluated leads to athenax.co (skips already-submitted)"
+        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+        :class="pipelineRunning ? 'bg-violet-50 border border-violet-200 text-violet-400 cursor-not-allowed' : 'bg-violet-600 hover:bg-violet-700 text-white'">
+        <svg x-show="runningStep !== 'submit'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+        </svg>
+        <svg x-show="runningStep === 'submit'" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        <span x-text="runningStep === 'submit' ? 'Submitting…' : 'Submit'"></span>
       </button>
       <!-- Export: download the full accumulated lead list as .xlsx (import into Google Sheets) -->
       <a href="/api/export/xlsx"
@@ -693,8 +716,8 @@ function app() {
     },
 
     showPipelineResult(s) {
-      const label = { scout: 'Scout', evaluate: 'Evaluate', pipeline: 'Pipeline' }[s.last_step] || 'Run';
-      const noun  = s.last_step === 'evaluate' ? 'evaluation' : 'lead';
+      const label = { scout: 'Scout', evaluate: 'Evaluate', submit: 'Submit', pipeline: 'Pipeline' }[s.last_step] || 'Run';
+      const noun  = s.last_step === 'evaluate' ? 'evaluation' : s.last_step === 'submit' ? 'submission' : 'lead';
       if (s.last_status === 'error') {
         this.pipelineMsg = `${label} failed: ` + (s.last_error || 'unknown error');
         this.pipelineMsgType = 'error';
@@ -706,6 +729,9 @@ function app() {
         } else if (s.last_step === 'evaluate') {
           this.pipelineMsg = `${label} finished — no new evaluations (nothing pending, or none scored ≥ 55). Check the logs.`;
           this.pipelineMsgType = 'warn';
+        } else if (s.last_step === 'submit') {
+          this.pipelineMsg = `${label} finished — all evaluated leads already submitted (or none evaluated yet).`;
+          this.pipelineMsgType = 'warn';
         } else {
           this.pipelineMsg = `${label} finished — no new leads saved. Output may have been empty or unparseable; check the logs.`;
           this.pipelineMsgType = 'warn';
@@ -715,6 +741,7 @@ function app() {
 
     runScout()    { return this._startStep('/api/scout/run',    'Scout'); },
     runEvaluate() { return this._startStep('/api/evaluate/run', 'Evaluate'); },
+    runSubmit()   { return this._startStep('/api/submit/run',   'Submit'); },
 
     async clearLeads() {
       if (this.pipelineRunning) return;
