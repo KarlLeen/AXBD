@@ -103,10 +103,14 @@ class AthenaXClient:
         name = lead.get("name", "")
         desc = lead.get("description", "") or ""
 
-        # shortDesc: one-line tagline, max 150 chars
-        short_desc = (desc[:147] + "...") if len(desc) > 150 else desc
+        # shortDesc: use dedicated field first, fall back to truncated description
+        short_desc = lead.get("short_description") or ""
+        if not short_desc:
+            short_desc = (desc[:147] + "...") if len(desc) > 150 else desc
         if not short_desc:
             short_desc = evaluation.get("reason_for_partnership", "")[:150]
+        if short_desc and len(short_desc) > 150:
+            short_desc = short_desc[:147] + "..."
 
         payload: dict = {
             "name": name,
@@ -116,30 +120,52 @@ class AthenaXClient:
         }
 
         # Primary URL
-        url = lead.get("url") or lead.get("homepage")
+        url = lead.get("url") or lead.get("homepage") or lead.get("website")
         if url:
             payload["url"] = url[:500]
 
-        # Funding stage — map to allowed enum values
-        stage = _map_stage(lead.get("funding_stage"))
+        # Funding stage — DB column is "stage"
+        stage = _map_stage(lead.get("stage") or lead.get("funding_stage"))
         if stage:
             payload["stage"] = stage
+
+        # Founded year — DB column is "founded" (TEXT), cast to int
+        founded = lead.get("founded")
+        if founded:
+            try:
+                payload["founded"] = int(str(founded).strip())
+            except (TypeError, ValueError):
+                pass
 
         # Total funding raised (USD number)
         funding = lead.get("funding_amount") or lead.get("funding")
         if isinstance(funding, (int, float)) and funding > 0:
             payload["funding"] = funding
 
+        # Contact email
+        email = lead.get("contact_email") or lead.get("email")
+        if email:
+            payload["email"] = str(email)[:200]
+
         # Category
         if category_id is not None:
             payload["categoryIds"] = [category_id]
 
-        # VC backers — array of strings
-        vc = lead.get("vc_backing")
-        if vc:
-            payload["backers"] = [b.strip() for b in str(vc).split(",") if b.strip()]
+        # Backers — DB stores as JSON list in "backers" column
+        backers = lead.get("backers")
+        if isinstance(backers, str):
+            try:
+                backers = json.loads(backers)
+            except Exception:
+                backers = [b.strip() for b in backers.split(",") if b.strip()]
+        if not backers:
+            vc = lead.get("vc_backing")
+            if vc:
+                backers = [b.strip() for b in str(vc).split(",") if b.strip()]
+        if backers and isinstance(backers, list):
+            payload["backers"] = [str(b) for b in backers if b]
 
-        # Links — github, twitter, website
+        # Links — github, twitter, discord, docs, linkedin
         payload["links"] = _build_links(lead)
 
         resp = httpx.post(
@@ -236,26 +262,39 @@ def _build_links(lead: dict) -> list[dict]:
     NOTE: Do NOT include linkType "website" here — the backend creates that
     automatically from the top-level `url` field. Sending both causes a
     UniqueViolationError on uq_product_links_product_link_type.
-    Only include: github, twitter, other (linkedin).
     """
     links = []
     source = lead.get("source", "")
     url = lead.get("url", "") or ""
 
-    # GitHub
-    github_url = None
-    if source == "github" and url:
-        github_url = url
-    elif "github.com" in url:
-        github_url = url
+    # GitHub — prefer dedicated field, fall back to url
+    github_url = lead.get("github_url")
+    if not github_url:
+        if source == "github" and url:
+            github_url = url
+        elif "github.com" in url:
+            github_url = url
     if github_url:
         links.append({"linkType": "github", "url": github_url[:500]})
 
-    # Twitter/X
-    handle = lead.get("twitter_handle")
-    if handle:
-        tw_url = f"https://twitter.com/{handle.lstrip('@')}"
-        links.append({"linkType": "twitter", "url": tw_url})
+    # Twitter/X — prefer dedicated URL, fall back to handle
+    twitter_url = lead.get("twitter_url")
+    if twitter_url:
+        links.append({"linkType": "twitter", "url": twitter_url[:500]})
+    else:
+        handle = lead.get("twitter_handle")
+        if handle:
+            links.append({"linkType": "twitter", "url": f"https://twitter.com/{handle.lstrip('@')}"})
+
+    # Discord
+    discord_url = lead.get("discord_url")
+    if discord_url:
+        links.append({"linkType": "discord", "url": discord_url[:500]})
+
+    # Docs
+    docs_url = lead.get("docs_url")
+    if docs_url:
+        links.append({"linkType": "docs", "url": docs_url[:500]})
 
     # LinkedIn (as "other" — no linkedin linkType in the API)
     linkedin = lead.get("linkedin_profile")
