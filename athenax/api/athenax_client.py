@@ -119,6 +119,11 @@ class AthenaXClient:
             "imported": True,
         }
 
+        # Subcategory — send as free-text suggestion (admin resolves to ID)
+        subcategory = lead.get("subcategory") or ""
+        if subcategory and subcategory not in ("not found", "Not Found"):
+            payload["otherSubcategoryName"] = subcategory[:100]
+
         # Primary URL
         url = lead.get("url") or lead.get("homepage") or lead.get("website")
         if url:
@@ -325,12 +330,13 @@ def _build_links(lead: dict) -> list[dict]:
 
 
 def _build_desc(raw_desc: str, evaluation: dict, lead: dict | None = None) -> str:
-    """Build full markdown description.
+    """Build full markdown description, capped at 800 chars.
     GitHub stars are embedded here since there's no dedicated field in the API.
     """
     parts = []
     if raw_desc:
-        parts.append(raw_desc)
+        # Cap the base description at 800 chars
+        parts.append(raw_desc[:800])
 
     # AthenaX evaluation notes
     reason = evaluation.get("reason_for_partnership", "")
