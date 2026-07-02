@@ -149,6 +149,24 @@ def _j(val) -> str | None:
     return val
 
 
+def _clean_team(team) -> list:
+    """Drop placeholder entries where every field is 'not found' or missing."""
+    if not isinstance(team, list):
+        return []
+    cleaned = []
+    for m in team:
+        if not isinstance(m, dict):
+            continue
+        # Keep if at least name or a social link is a real value
+        has_real = any(
+            m.get(f) and m.get(f) not in ("not found", "Not Found", "")
+            for f in ("name", "linkedin", "twitter")
+        )
+        if has_real:
+            cleaned.append(m)
+    return cleaned
+
+
 def _save_leads(leads: list) -> dict[str, str]:
     """Upsert lead rows (dedup by URL); return {name → id} map."""
     id_map: dict[str, str] = {}
@@ -237,7 +255,7 @@ def _save_leads(leads: list) -> dict[str, str]:
                         lead.get("docs_url"),
                         _j(lead.get("other_links")),
                         _j(lead.get("backers")),
-                        _j(lead.get("team")),
+                        _j(_clean_team(lead.get("team"))),
                         _j(lead.get("voices")),
                         _j(lead.get("bounties")),
                         lead.get("github_stars"),
@@ -622,6 +640,59 @@ def run_pipeline() -> None:
     print("    Open the dashboard to review evaluated leads.\n")
 
 
+_SCHEDULE_DAYS = (
+    "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+)
+
+
+def _validate_schedule_time(value: str) -> str:
+    parts = value.split(":")
+    if len(parts) != 2:
+        raise ValueError(f"Invalid time {value!r} — expected HH:MM (24-hour UTC)")
+    hour, minute = parts
+    if not (hour.isdigit() and minute.isdigit() and len(hour) == 2 and len(minute) == 2):
+        raise ValueError(f"Invalid time {value!r} — expected HH:MM (24-hour UTC)")
+    h, m = int(hour), int(minute)
+    if not (0 <= h <= 23 and 0 <= m <= 59):
+        raise ValueError(f"Invalid time {value!r} — hour must be 00-23, minute 00-59")
+    return f"{hour}:{minute}"
+
+
+def _register_schedule_job(sched, *, day: str | None, time_utc: str, hours: int | None) -> str:
+    """Register the pipeline job and return a human-readable schedule summary."""
+    if day is not None:
+        day_key = day.lower()
+        if day_key not in _SCHEDULE_DAYS:
+            raise ValueError(
+                f"Invalid day {day!r} — choose one of: {', '.join(_SCHEDULE_DAYS)}"
+            )
+        at_time = _validate_schedule_time(time_utc)
+        getattr(sched.every(), day_key).at(at_time).do(run_pipeline)
+        return f"every {day_key.title()} at {at_time} UTC"
+    interval = hours if hours is not None else 8
+    if interval <= 0:
+        raise ValueError("--hours must be a positive integer")
+    sched.every(interval).hours.do(run_pipeline)
+    return f"every {interval} hour{'s' if interval != 1 else ''}"
+
+
+def _run_schedule_loop(*, day: str | None, time_utc: str, hours: int | None) -> None:
+    import schedule as sched
+    import time
+
+    summary = _register_schedule_job(
+        sched, day=day, time_utc=time_utc, hours=hours,
+    )
+    if day is not None:
+        print(f"Scheduled: {summary}. Waiting for next run...")
+    else:
+        print(f"Scheduled: {summary}. Running now for the first time...")
+        run_pipeline()
+    while True:
+        sched.run_pending()
+        time.sleep(60)
+
+
 def main() -> None:
     import argparse
 
@@ -633,8 +704,23 @@ def main() -> None:
     sub.add_parser("dashboard", help="Open the web admin dashboard")
     sub.add_parser("bot", help="Start the Telegram admin bot")
 
-    cron_p = sub.add_parser("schedule", help="Run pipeline on a repeating interval (blocks)")
-    cron_p.add_argument("--hours", type=int, default=8, help="Run every N hours (default: 8)")
+    cron_p = sub.add_parser("schedule", help="Run pipeline on a schedule (blocks)")
+    cron_p.add_argument(
+        "--day",
+        choices=_SCHEDULE_DAYS,
+        help="Run weekly on this weekday (UTC). Used by athenax-pipeline.service.",
+    )
+    cron_p.add_argument(
+        "--time",
+        default="09:00",
+        help="Run at this time when --day is set (HH:MM, 24-hour UTC, default: 09:00)",
+    )
+    cron_p.add_argument(
+        "--hours",
+        type=int,
+        default=None,
+        help="Run every N hours instead of weekly (default: 8 when --day is omitted)",
+    )
 
     args = parser.parse_args()
 
@@ -650,15 +736,10 @@ def main() -> None:
         from telegram_bot.bot import run_bot
         run_bot()
     elif args.command == "schedule":
-        import schedule as sched
-        import time
-
-        sched.every(args.hours).hours.do(run_pipeline)
-        print(f"Scheduled: every {args.hours} hours. Running now for the first time...")
-        run_pipeline()
-        while True:
-            sched.run_pending()
-            time.sleep(60)
+        try:
+            _run_schedule_loop(day=args.day, time_utc=args.time, hours=args.hours)
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
     else:
         parser.print_help()
 
