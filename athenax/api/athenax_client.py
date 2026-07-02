@@ -165,6 +165,26 @@ class AthenaXClient:
         if backers and isinstance(backers, list):
             payload["backers"] = [str(b) for b in backers if b]
 
+        # Team members
+        team = lead.get("team")
+        if isinstance(team, str):
+            try:
+                team = json.loads(team)
+            except Exception:
+                team = []
+        if team and isinstance(team, list):
+            payload["team"] = [
+                {
+                    "name": m.get("name", ""),
+                    "roleLabel": m.get("title") or m.get("roleLabel") or None,
+                    "bioNote": m.get("bio") or m.get("bioNote") or None,
+                    "linkedinUrl": m.get("linkedin") or m.get("linkedinUrl") or None,
+                    "twitterUrl": m.get("twitter") or m.get("twitterUrl") or None,
+                }
+                for m in team
+                if isinstance(m, dict) and m.get("name") and m.get("name") not in ("not found", "")
+            ]
+
         # Links — github, twitter, discord, docs, linkedin
         payload["links"] = _build_links(lead)
 
