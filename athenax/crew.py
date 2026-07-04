@@ -295,17 +295,22 @@ TEAM (search LinkedIn, the website /team or /about page, Crunchbase, and Twitter
   Each member MUST have all four parts at this granularity:
   - name    — full name (e.g. "Amjad Masad")
   - title   — job title / role (e.g. "Co founder and CEO", "Executive Chair")
-  - bio     — ONE substantive sentence: what they do here AND their background. Call out
-              concrete signals when findable: a top university, a previous top-10 / well-known
-              company, a company acquired by a major firm, or a notable achievement.
-              (NOT a vague filler line — say something specific.)
+  - bio     — ONE substantive sentence about their PREVIOUS EXPERIENCE and BACKGROUND —
+              NOT what they do at this company (the title already covers that).
+              Focus on: where they worked before (especially top-10 / well-known companies),
+              companies they founded or exited, funds they raised, notable achievements,
+              or top-university credentials. Be specific and concrete.
+              BAD: "Leads Polsia's AI platform" (that's just the current role again)
+              GOOD: "Previously early operator at CloudKitchens under Travis Kalanick;
+                     raised $17M for a prior e-commerce/3D rendering startup."
+              Keep under 280 characters.
   - linkedin — FULL LinkedIn profile URL (e.g. "https://www.linkedin.com/in/amjadmasad"), or "not found"
   - twitter  — FULL X/Twitter profile URL (e.g. "https://x.com/amasad") when available, else "not found"
 
   Reference granularity — this is the depth expected for ONE project's team (Replit):
-    Amjad Masad | Co founder and CEO | Leads Replit and its AI software development platform | https://www.linkedin.com/in/amjadmasad | https://x.com/amasad
-    Haya Odeh | Co founder | Supports product and operations across Replit's developer platform | https://www.linkedin.com/in/haya-odeh-b0725928/
-    Faris Masad | Co founder | Supports engineering and development of Replit's collaborative coding platform | https://www.linkedin.com/in/faris-masad-219b0515b/
+    Amjad Masad | Co founder and CEO | Ex-Facebook engineer; previously co-founded JSRepl (acquired); raised $97M+ across multiple rounds. | https://www.linkedin.com/in/amjadmasad | https://x.com/amasad
+    Haya Odeh | Co founder | Former software engineer at Facebook; Computer Science graduate of Hebrew University of Jerusalem. | https://www.linkedin.com/in/haya-odeh-b0725928/
+    Faris Masad | Co founder | Previously software engineer at Facebook; Computer Science background from the University of Jordan. | https://www.linkedin.com/in/faris-masad-219b0515b/
 
   Empty array [] only if the project genuinely has no discoverable team.
 
