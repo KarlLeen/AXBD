@@ -97,6 +97,28 @@ class AthenaXClient:
         except httpx.ConnectError:
             return None
 
+    def get_all_products(self, limit: int = 500) -> list[dict]:
+        """GET /api/v1/products — fetch all published products for Scout deduplication.
+        Returns empty list on any error (non-blocking)."""
+        try:
+            resp = httpx.get(
+                f"{self.base_url}/api/v1/products",
+                params={"limit": limit, "offset": 0},
+                headers=self._headers,
+                timeout=30,
+            )
+            if resp.status_code in (401, 403, 404):
+                return []
+            resp.raise_for_status()
+            data = resp.json()
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict):
+                return data.get("items", [])
+            return []
+        except Exception:
+            return []
+
     def push_product(self, lead: dict, evaluation: dict, category_id: int | None = None) -> str:
         """POST /internal/products — creates a PENDING product.
         Returns the remote product id string. Raises on failure."""

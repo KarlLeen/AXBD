@@ -615,16 +615,26 @@ def run_scout() -> dict[str, str]:
     init_db()
     print("\n🔍  Scout: discovering leads...\n")
 
+    # Collect exclusions from local DB
     with get_connection() as conn:
         existing = conn.execute("SELECT name, url FROM leads").fetchall()
+    db_names = {r["name"] for r in existing}
 
-    if existing:
-        lines = "\n".join(f"  - {r['name']} | {r['url']}" for r in existing)
+    # Collect exclusions from athenax.co (already-published products)
+    from athenax.api.athenax_client import AthenaXClient
+    site_products = AthenaXClient().get_all_products()
+    site_names = {p.get("name", "") for p in site_products if p.get("name")} - db_names
+    print(f"    Exclusion sources: {len(existing)} in local DB + {len(site_names)} on athenax.co")
+
+    exclusion_lines = [f"  - {r['name']} | {r['url']}" for r in existing]
+    exclusion_lines += [f"  - {n}" for n in sorted(site_names)]
+
+    if exclusion_lines:
         exclude_context = (
-            "━━━ ALREADY IN DATABASE — DO NOT SCOUT THESE ━━━\n"
-            "The following projects are already tracked. Exclude them from your output "
-            "and scout DIFFERENT projects that are not on this list:\n"
-            f"{lines}"
+            "━━━ ALREADY TRACKED OR ON ATHENAX.CO — DO NOT SCOUT THESE ━━━\n"
+            "The following projects are already in the database or published on athenax.co. "
+            "Scout DIFFERENT projects not on this list:\n"
+            + "\n".join(exclusion_lines)
         )
     else:
         exclude_context = ""
