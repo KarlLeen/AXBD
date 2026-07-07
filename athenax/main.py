@@ -513,25 +513,28 @@ def run_verify() -> None:
                         member["linkedin"] = vm.get("linkedin") or None
                         member["twitter"] = vm.get("twitter") or None
 
-            updates = {
-                "certainty": certainty,
-                "team": _j(team),
-                "github_url": v.get("github_url") or None,
-                "twitter_url": v.get("twitter_url") or None,
-                "discord_url": v.get("discord_url") or None,
-                "docs_url": v.get("docs_url") or None,
-            }
+            score = v.get("certainty_score")
+            note = v.get("certainty_note") or ""
+            try:
+                score = int(score) if score is not None else None
+            except (TypeError, ValueError):
+                score = None
+
             conn.execute(
                 """UPDATE leads SET
-                    certainty=?, team=?, github_url=?, twitter_url=?,
+                    certainty=?, certainty_score=?, certainty_note=?,
+                    team=?, github_url=?, twitter_url=?,
                     discord_url=?, docs_url=?, updated_at=?
                    WHERE id=?""",
-                (updates["certainty"], updates["team"],
-                 updates["github_url"], updates["twitter_url"],
-                 updates["discord_url"], updates["docs_url"],
+                (certainty, score, note or None,
+                 _j(team),
+                 v.get("github_url") or None,
+                 v.get("twitter_url") or None,
+                 v.get("discord_url") or None,
+                 v.get("docs_url") or None,
                  _now(), lead["id"]),
             )
-            print(f"  ✓ {lead['name']} → certainty={certainty}")
+            print(f"  ✓ {lead['name']} → certainty={certainty} ({score}) — {note}")
             updated += 1
         conn.commit()
 

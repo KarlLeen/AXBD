@@ -617,55 +617,62 @@ def build_verifier_crew(leads_json: str) -> Crew:
     verify_task = Task(
         description=f"""
 You are given a list of scouted projects. Your job is to verify the URLs in each lead
-and assign a certainty score based on how much data you can confirm.
+and assign a numeric certainty score (0–100) with a short explanation.
 
 ━━━ LEADS TO VERIFY ━━━
 {leads_json}
 
-━━━ FOR EACH LEAD, DO THE FOLLOWING ━━━
+━━━ FOR EACH LEAD, FOLLOW THESE STEPS ━━━
 
-① Verify project existence
+① Verify project existence (+20 pts)
    web_search("[project name] official site") — confirm the project is real and the
-   website URL in the lead matches. If the project cannot be found at all → certainty = "low".
+   website URL matches. Award 20 points if confirmed. 0 if not findable.
 
-② Verify team member URLs
-   For EACH team member with a linkedin or twitter URL:
+② Verify team member URLs (up to +30 pts)
+   For EACH team member that has a linkedin or twitter URL:
    a. Use web_search("[person name] [company] LinkedIn") or LinkedInPeopleSearchTool.
-      Confirm the URL exists AND the profile matches this person (right name, right company).
-      If it doesn't match or returns 404 → set that URL to null.
-   b. Use web_search("[person name] [company] Twitter X") to verify twitter URLs.
-      Same rule: if unconfirmed → null.
-   NEVER guess or construct a URL. Only keep URLs you have positively confirmed.
+      Confirm the URL exists AND the profile matches (right name, right company).
+      If confirmed → keep URL. If not confirmed → set to null.
+   b. Same for twitter: web_search("[person name] [company] Twitter X").
+   Award points: +10 per verified team member URL, capped at 30 total.
+   NEVER guess or construct a URL — only keep confirmed ones.
 
-③ Verify project links (github_url, twitter_url, discord_url, docs_url)
-   web_search("[project name] github") to confirm github_url exists.
-   web_search("[project name] twitter") to confirm twitter_url.
-   If a link cannot be confirmed → set it to null.
+③ Verify project links (up to +50 pts)
+   github_url  → web_search("[project name] github"):  +15 if confirmed
+   twitter_url → web_search("[project name] twitter"): +15 if confirmed
+   discord_url → web_search("[project name] discord"): +10 if confirmed
+   docs_url    → web_search("[project name] docs"):    +10 if confirmed
+   Set any unconfirmed link to null.
 
-④ Assign certainty
-   "high"   — project clearly exists on the web; 2+ team member URLs verified;
-               all key project links (website + at least 2 others) confirmed.
-   "medium" — project found; at least 1 team URL verified OR team has real names
-               but URLs unverifiable; most project links confirmed.
-   "low"    — project barely findable OR no team data verifiable OR >50% of links
-               cannot be confirmed.
+④ Total score → certainty label
+   70–100 → "high"
+   40–69  → "medium"
+   0–39   → "low"
+
+⑤ Write a certainty_note — ONE sentence explaining the score.
+   Mention: how many team URLs were verified, which project links were confirmed,
+   and any notable issues (e.g. "GitHub confirmed, Discord not found").
+   Example: "2 of 3 team LinkedIn URLs verified; GitHub and Twitter confirmed; Discord link not found."
 
 ━━━ OUTPUT FORMAT ━━━
 Return a JSON array — one object per lead — with exactly these fields:
-  name         — project name (unchanged, used to match back to the DB)
-  certainty    — "high" | "medium" | "low"
-  team         — array of team member objects, each with:
-                   name (unchanged), linkedin (verified URL or null), twitter (verified URL or null)
-  github_url   — verified URL or null
-  twitter_url  — verified URL or null
-  discord_url  — verified URL or null
-  docs_url     — verified URL or null
+  name             — project name (unchanged)
+  certainty        — "high" | "medium" | "low"
+  certainty_score  — integer 0–100
+  certainty_note   — 1 sentence explaining the score
+  team             — array, each member: {{name, linkedin (URL or null), twitter (URL or null)}}
+  github_url       — verified URL or null
+  twitter_url      — verified URL or null
+  discord_url      — verified URL or null
+  docs_url         — verified URL or null
 
-Do NOT include any other fields. Keep the array fully closed (ends with `]`).
+Keep the array fully closed (ends with `]`).
 """,
         expected_output=(
             "A JSON array — one object per lead — each with: "
             "name (string), certainty ('high'|'medium'|'low'), "
+            "certainty_score (integer 0–100), "
+            "certainty_note (1 sentence explaining the score), "
             "team (array of {name, linkedin, twitter} — URLs verified or null), "
             "github_url (string or null), twitter_url (string or null), "
             "discord_url (string or null), docs_url (string or null)."

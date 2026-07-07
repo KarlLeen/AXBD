@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS leads (
     conference_origin     TEXT,
     remote_lead_id        TEXT,
     certainty             TEXT,
+    certainty_score       INTEGER,
+    certainty_note        TEXT,
     created_at            TEXT NOT NULL,
     updated_at            TEXT NOT NULL
 );
@@ -120,6 +122,8 @@ _NEW_LEAD_COLS = [
     ("conference_origin",  "TEXT"),
     ("remote_lead_id",     "TEXT"),
     ("certainty",          "TEXT"),
+    ("certainty_score",    "INTEGER"),
+    ("certainty_note",     "TEXT"),
     ("commits_last_30d",   "INTEGER"),
     ("updated_at",         "TEXT"),
     ("bd_twitter_handles", "TEXT"),

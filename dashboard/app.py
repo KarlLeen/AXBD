@@ -112,7 +112,8 @@ def leads():
                 l.tech_stack, l.linkedin_profile, l.linkedin_recent_post,
                 l.twitter_handle, l.twitter_followers, l.twitter_recent_tweet,
                 l.bd_twitter_handles, l.contact_email,
-                l.velocity_notes, l.conference_origin, l.certainty, l.created_at,
+                l.velocity_notes, l.conference_origin,
+                l.certainty, l.certainty_score, l.certainty_note, l.created_at,
                 e.id         AS eval_id,
                 e.compatibility_score,
                 e.reason_for_partnership,
@@ -432,12 +433,14 @@ HTML = r"""<!DOCTYPE html>
                   :class="stageClass(lead.stage)" x-text="lead.stage"></span>
             <!-- Founded -->
             <span x-show="has(lead.founded)" class="text-xs text-slate-400" x-text="'est. ' + lead.founded"></span>
-            <!-- Certainty badge -->
-            <span x-show="lead.certainty" class="text-xs px-1.5 py-0.5 rounded font-medium"
+            <!-- Certainty badge: score + label, tooltip shows note -->
+            <span x-show="lead.certainty"
+                  class="text-xs px-1.5 py-0.5 rounded font-medium cursor-default"
                   :class="lead.certainty === 'high'   ? 'bg-emerald-50 text-emerald-600' :
                            lead.certainty === 'medium' ? 'bg-amber-50 text-amber-600' :
                                                          'bg-red-50 text-red-500'"
-                  x-text="'● ' + lead.certainty"></span>
+                  :title="lead.certainty_note || lead.certainty"
+                  x-text="(lead.certainty_score != null ? lead.certainty_score + ' · ' : '') + lead.certainty"></span>
           </div>
           <p x-show="lead.short_description" class="text-xs text-slate-400 mt-0.5 truncate" x-text="lead.short_description"></p>
         </div>
