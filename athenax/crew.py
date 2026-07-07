@@ -242,17 +242,22 @@ genuinely searching with all your tools, you cannot find a value, set that field
 string "not found". Exceptions:
   (a) url / website must ALWAYS be a real URL — it is the project's identity and dedup key, so
       only output projects that actually have one (never "not found" here).
-  (b) list fields (other_links, backers, team, voices, bounties, bd_twitter_handles) use an
-      empty array [] when nothing is found.
+  (b) list fields (other_links, backers, grants, team, voices, bounties, bd_twitter_handles)
+      use an empty array [] when nothing is found.
   (c) numeric signals (github_stars, github_forks, commits_last_30d/90d, twitter_followers)
       stay numbers, or null if unknown — do NOT write "not found" for numbers.
+  (d) link fields (github_url, twitter_url, discord_url, docs_url) — OMIT or set to null
+      if not found. NEVER write "not found" for these fields.
 
 NAME & DESCRIPTIONS
 • name — official project/company name
-• short_description — one sentence (≤15 words) for a listing header. What it does, plainly.
-• description — the longer "About" paragraph (2–4 sentences), more detailed than
-                short_description: what the project builds, HOW it works / what you can
-                actually do with it (its functionality), why it matters, and any key traction.
+• short_description — HARD LIMIT: 60 characters total (including the final period).
+                      Must end with a period. One sharp phrase saying what it does.
+                      Example: "Autonomous AI agents for enterprise ops." (42 chars ✓)
+                      Count characters before outputting — never exceed 60.
+• description — 3–5 sentences, 550–650 characters total. Never shorter than 500 or
+                longer than 650 characters. Cover: what it builds, how it works,
+                why it matters, and any key traction or differentiation.
 
 CLASSIFICATION
 • category — MUST be exactly one of:
@@ -277,17 +282,24 @@ FOUNDING
              website footer. "not found" if no founding year can be found.
 
 LINKS (collect every link you can find)
+CRITICAL RULE: If you cannot find a real URL for a link field, OMIT THAT FIELD ENTIRELY
+from the JSON. NEVER set a link field to "not found" or any placeholder string.
+Only output link fields where you have a verified, working URL.
 • website — main product/company URL
-• github_url — GitHub repo or org URL
-• twitter_url — full Twitter/X profile URL (e.g. https://x.com/handle)
-• discord_url — Discord server invite link. Search "[project name] discord" or check website.
-• docs_url — documentation URL (docs., gitbook., notion., etc.)
+• github_url — GitHub repo or org URL (only if found)
+• twitter_url — full Twitter/X profile URL, e.g. https://x.com/handle (only if found)
+• discord_url — Discord server invite link (only if found)
+• docs_url — documentation URL: docs., gitbook., notion., etc. (only if found)
 • other_links — array of any other relevant links (blog, whitepaper, token page, etc.)
 
-BACKERS
-• backers — JSON array of strings: all known VCs, angels, accelerators backing this project.
+BACKERS & GRANTS
+• backers — JSON array of strings: VCs, angel investors, and accelerators ONLY.
+  Do NOT include grants, prizes, or protocol incentive programs here.
   Search "[project name] investors", "[project name] backed by", "[project name] raised from".
   Examples: ["a16z", "Paradigm", "YC W26", "Sequoia"]. Empty array [] if none found.
+• grants — JSON array of strings: grant programs, prizes, hackathon wins, and protocol
+  incentives ONLY (not VCs). Examples: ["NSF SBIR Phase I", "ETHGlobal Best DeFi Prize",
+  "Filecoin Foundation Grant"]. Empty array [] if none found.
 
 TEAM (search LinkedIn, the website /team or /about page, Crunchbase, and Twitter bios)
 • team — JSON array of the FOUNDERS + key leadership. Get EVERY co-founder you can find
@@ -304,8 +316,12 @@ TEAM (search LinkedIn, the website /team or /about page, Crunchbase, and Twitter
               GOOD: "Previously early operator at CloudKitchens under Travis Kalanick;
                      raised $17M for a prior e-commerce/3D rendering startup."
               Keep under 280 characters.
-  - linkedin — FULL LinkedIn profile URL (e.g. "https://www.linkedin.com/in/amjadmasad"), or "not found"
-  - twitter  — FULL X/Twitter profile URL (e.g. "https://x.com/amasad") when available, else "not found"
+  - linkedin — FULL LinkedIn profile URL only if you VERIFIED it exists. ANTI-HALLUCINATION:
+               do NOT construct a URL from the person's name (e.g. /in/firstname-lastname is
+               a guess). Search their name + company on LinkedIn and confirm the profile
+               matches before including. Use "not found" if unverified.
+  - twitter  — FULL X/Twitter URL only if verified the account exists and matches this person.
+               Same rule: do NOT guess from a handle. "not found" if unverified.
 
   Reference granularity — this is the depth expected for ONE project's team (Replit):
     Amjad Masad | Co founder and CEO | Ex-Facebook engineer; previously co-founded JSRepl (acquired); raised $97M+ across multiple rounds. | https://www.linkedin.com/in/amjadmasad | https://x.com/amasad
@@ -315,14 +331,15 @@ TEAM (search LinkedIn, the website /team or /about page, Crunchbase, and Twitter
   Empty array [] only if the project genuinely has no discoverable team.
 
 VOICES (external mentions — NOT the project's own posts)
-• voices — JSON array of third-party coverage from the wider world: press/news about the
-  project and mentions by notable people — PRIMARILY from X/Twitter (influential accounts,
-  VCs, founders), plus articles/podcasts. For each item:
-  - url     — direct link to the article, tweet, or post
+• voices — JSON array of third-party coverage. Aim for 4–6 entries; include only real,
+  findable items. Prioritise: popular/high-engagement tweets from notable accounts (VCs,
+  founders, influencers), press articles, and podcasts. Each entry:
+  - url     — direct link to the article, tweet, or post (must be a real URL)
   - source  — who said it (e.g. "TechCrunch", "a16z blog", "@naval on X")
   - summary — one sentence on what was said
-  Search "[project name] mentioned by", "[project name] news 2025 2026",
-  and "[project name] site:x.com". Empty array [] if none found.
+  Search "[project name] site:x.com", "[project name] mentioned by VC",
+  "[project name] news 2025 2026". Only include entries with a verifiable URL.
+  Empty array [] if genuinely none found — do NOT fabricate URLs.
 
 BOUNTIES (reward programs the project runs)
 • bounties — JSON array. For each:

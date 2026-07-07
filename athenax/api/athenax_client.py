@@ -283,6 +283,21 @@ def _map_stage(raw: str | None) -> str | None:
     return _STAGE_MAP.get(raw.strip().lower())
 
 
+_NOT_FOUND = {"not found", "not_found", "none", "n/a", ""}
+
+
+def _valid_url(u) -> str | None:
+    """Return u if it looks like a real URL, else None."""
+    if not u:
+        return None
+    s = str(u).strip()
+    if s.lower() in _NOT_FOUND:
+        return None
+    if not s.startswith("http"):
+        return None
+    return s
+
+
 def _build_links(lead: dict) -> list[dict]:
     """Build the links array for the API payload.
 
@@ -295,7 +310,7 @@ def _build_links(lead: dict) -> list[dict]:
     url = lead.get("url", "") or ""
 
     # GitHub — prefer dedicated field, fall back to url
-    github_url = lead.get("github_url")
+    github_url = _valid_url(lead.get("github_url"))
     if not github_url:
         if source == "github" and url:
             github_url = url
@@ -305,26 +320,26 @@ def _build_links(lead: dict) -> list[dict]:
         links.append({"linkType": "github", "url": github_url[:500]})
 
     # Twitter/X — prefer dedicated URL, fall back to handle
-    twitter_url = lead.get("twitter_url")
+    twitter_url = _valid_url(lead.get("twitter_url"))
     if twitter_url:
         links.append({"linkType": "twitter", "url": twitter_url[:500]})
     else:
         handle = lead.get("twitter_handle")
-        if handle:
-            links.append({"linkType": "twitter", "url": f"https://twitter.com/{handle.lstrip('@')}"})
+        if handle and str(handle).lower() not in _NOT_FOUND:
+            links.append({"linkType": "twitter", "url": f"https://twitter.com/{str(handle).lstrip('@')}"})
 
     # Discord
-    discord_url = lead.get("discord_url")
+    discord_url = _valid_url(lead.get("discord_url"))
     if discord_url:
         links.append({"linkType": "discord", "url": discord_url[:500]})
 
     # Docs
-    docs_url = lead.get("docs_url")
+    docs_url = _valid_url(lead.get("docs_url"))
     if docs_url:
         links.append({"linkType": "docs", "url": docs_url[:500]})
 
     # LinkedIn (as "other" — no linkedin linkType in the API)
-    linkedin = lead.get("linkedin_profile")
+    linkedin = _valid_url(lead.get("linkedin_profile"))
     if linkedin:
         links.append({"linkType": "other", "url": linkedin[:500], "label": "LinkedIn"})
 
@@ -332,29 +347,9 @@ def _build_links(lead: dict) -> list[dict]:
 
 
 def _build_desc(raw_desc: str, evaluation: dict, lead: dict | None = None) -> str:
-    """Build full markdown description, capped at 800 chars.
-    GitHub stars are embedded here since there's no dedicated field in the API.
+    """Build product description capped at 650 chars.
+    Evaluation notes are BD-internal and not included in the public description.
     """
-    parts = []
-    if raw_desc:
-        # Cap the base description at 800 chars
-        parts.append(raw_desc[:800])
-
-    # AthenaX evaluation notes
-    reason = evaluation.get("reason_for_partnership", "")
-    if reason:
-        parts.append(f"\n**Why AthenaX:** {reason}")
-    notes = evaluation.get("listing_fit_notes", "")
-    if notes:
-        parts.append(f"\n**Listing fit:** {notes}")
-    traits = evaluation.get("nounish_traits")
-    if traits:
-        if isinstance(traits, str):
-            try:
-                traits = json.loads(traits)
-            except Exception:
-                traits = []
-        if traits:
-            parts.append(f"\n**Tags:** {', '.join(traits)}")
-
-    return "\n".join(parts)
+    if not raw_desc:
+        return ""
+    return raw_desc[:650]
