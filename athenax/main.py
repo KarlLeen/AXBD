@@ -615,7 +615,21 @@ def run_scout() -> dict[str, str]:
     init_db()
     print("\n🔍  Scout: discovering leads...\n")
 
-    crew = build_scout_crew()
+    with get_connection() as conn:
+        existing = conn.execute("SELECT name, url FROM leads").fetchall()
+
+    if existing:
+        lines = "\n".join(f"  - {r['name']} | {r['url']}" for r in existing)
+        exclude_context = (
+            "━━━ ALREADY IN DATABASE — DO NOT SCOUT THESE ━━━\n"
+            "The following projects are already tracked. Exclude them from your output "
+            "and scout DIFFERENT projects that are not on this list:\n"
+            f"{lines}"
+        )
+    else:
+        exclude_context = ""
+
+    crew = build_scout_crew(exclude_context=exclude_context)
     result = crew.kickoff()
     tasks_output = getattr(result, "tasks_output", [])
     raw_leads_text = tasks_output[0].raw if tasks_output else ""

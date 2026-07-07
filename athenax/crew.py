@@ -500,14 +500,22 @@ Return your results as a JSON array.
     )
 
 
-def build_scout_crew() -> Crew:
-    """Scout-only crew (discovery, no evaluation) for the decoupled Scout step.
-
-    Reuses build_crew()'s scout agent + task (which has no context dependency)
-    and drops the evaluator, so the Scout step can run on its own.
-    """
+def build_scout_crew(exclude_context: str = "") -> Crew:
+    """Scout-only crew. Pass exclude_context to prevent re-scouting known projects."""
     full = build_crew()
-    return Crew(agents=[full.agents[0]], tasks=[full.tasks[0]], verbose=True)
+    scout_agent = full.agents[0]
+    base_task = full.tasks[0]
+
+    if exclude_context:
+        modified_task = Task(
+            description=base_task.description + "\n\n" + exclude_context,
+            expected_output=base_task.expected_output,
+            agent=scout_agent,
+        )
+    else:
+        modified_task = base_task
+
+    return Crew(agents=[scout_agent], tasks=[modified_task], verbose=True)
 
 
 def build_evaluator_crew(leads_json: str) -> Crew:
