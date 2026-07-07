@@ -316,12 +316,17 @@ TEAM (search LinkedIn, the website /team or /about page, Crunchbase, and Twitter
               GOOD: "Previously early operator at CloudKitchens under Travis Kalanick;
                      raised $17M for a prior e-commerce/3D rendering startup."
               Keep under 280 characters.
-  - linkedin — FULL LinkedIn profile URL only if you VERIFIED it exists. ANTI-HALLUCINATION:
-               do NOT construct a URL from the person's name (e.g. /in/firstname-lastname is
-               a guess). Search their name + company on LinkedIn and confirm the profile
-               matches before including. Use "not found" if unverified.
-  - twitter  — FULL X/Twitter URL only if verified the account exists and matches this person.
-               Same rule: do NOT guess from a handle. "not found" if unverified.
+  - linkedin — FULL LinkedIn profile URL. STRICT RULES:
+               (1) NEVER construct a URL from a person's name. A URL like
+                   linkedin.com/in/john-smith assembled from the name is a GUESS, not a fact.
+               (2) You MUST find the URL in a search result, the project's /team page,
+                   a Crunchbase profile, or the person's own Twitter bio before including it.
+               (3) If your only "source" is your own pattern-matching, write "not found".
+               HOW TO VERIFY: run web_search("[name] [company] LinkedIn") and confirm
+               a result explicitly shows this URL or a LinkedIn page matching this person.
+  - twitter  — FULL X/Twitter URL. Same strict rules as linkedin above:
+               found in a search result or the person's own page → include.
+               Guessed from the person's name → "not found".
 
   Reference granularity — this is the depth expected for ONE project's team (Replit):
     Amjad Masad | Co founder and CEO | Ex-Facebook engineer; previously co-founded JSRepl (acquired); raised $97M+ across multiple rounds. | https://www.linkedin.com/in/amjadmasad | https://x.com/amasad
@@ -365,6 +370,15 @@ VELOCITY
 ━━━ ACTIVITY CHECK ━━━
 • Set status = "inactive" if: repo archived, commits_last_90d == 0, or project announced shutdown.
 • Exclude inactive projects from output entirely.
+
+━━━ MANDATORY VERIFICATION PASS (do this BEFORE writing the final JSON) ━━━
+For every team member across all 5 leads, go through their linkedin and twitter fields:
+  1. Ask yourself: "Did I find this URL in a search result, a /team page, a Crunchbase
+     entry, or the person's own bio — or did I construct it from their name?"
+  2. If constructed → replace with "not found".
+  3. If found in a source → use web_search to confirm the page exists and the profile
+     matches this person (right name, right company). If it doesn't match → "not found".
+This pass is NOT optional. Hallucinated URLs waste admin time and damage trust.
 
 Return a single, COMPLETE JSON array of EXACTLY 5 ACTIVE leads — never more than 5, and make sure
 the array is fully closed (ends with `]`). A truncated array loses every lead.
