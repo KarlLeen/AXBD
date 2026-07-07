@@ -307,15 +307,15 @@ TEAM (search LinkedIn, the website /team or /about page, Crunchbase, and Twitter
   Each member MUST have all four parts at this granularity:
   - name    — full name (e.g. "Amjad Masad")
   - title   — job title / role (e.g. "Co founder and CEO", "Executive Chair")
-  - bio     — ONE substantive sentence about their PREVIOUS EXPERIENCE and BACKGROUND —
-              NOT what they do at this company (the title already covers that).
-              Focus on: where they worked before (especially top-10 / well-known companies),
-              companies they founded or exited, funds they raised, notable achievements,
-              or top-university credentials. Be specific and concrete.
-              BAD: "Leads Polsia's AI platform" (that's just the current role again)
-              GOOD: "Previously early operator at CloudKitchens under Travis Kalanick;
-                     raised $17M for a prior e-commerce/3D rendering startup."
-              Keep under 280 characters.
+  - bio     — Short background bio as 2–3 bullet points (use "• " prefix).
+              Focus ONLY on PREVIOUS EXPERIENCE — NOT current role (title covers that).
+              Each bullet covers one signal: prior employer, company founded/exited,
+              funding raised, acquisition, or top-university credential.
+              Be specific and concrete. Total under 300 characters.
+              BAD: "• Leads Polsia's AI platform"  (current role — wrong)
+              GOOD: "• Early operator at CloudKitchens (Travis Kalanick)\n
+                      • Founded prior startup, raised $17M\n
+                      • MIT Computer Science"
   - linkedin — FULL LinkedIn profile URL. STRICT RULES:
                (1) NEVER construct a URL from a person's name. A URL like
                    linkedin.com/in/john-smith assembled from the name is a GUESS, not a fact.

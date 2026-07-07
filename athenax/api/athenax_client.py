@@ -103,14 +103,12 @@ class AthenaXClient:
         name = lead.get("name", "")
         desc = lead.get("description", "") or ""
 
-        # shortDesc: use dedicated field first, fall back to truncated description
+        # shortDesc: use dedicated field first, hard cap 60 chars ending with "."
         short_desc = lead.get("short_description") or ""
         if not short_desc:
-            short_desc = (desc[:147] + "...") if len(desc) > 150 else desc
-        if not short_desc:
-            short_desc = evaluation.get("reason_for_partnership", "")[:150]
-        if short_desc and len(short_desc) > 150:
-            short_desc = short_desc[:147] + "..."
+            short_desc = (desc[:57] + "...") if len(desc) > 60 else desc
+        if short_desc and len(short_desc) > 60:
+            short_desc = short_desc[:59].rstrip() + "."
 
         payload: dict = {
             "name": name,
@@ -287,15 +285,18 @@ _NOT_FOUND = {"not found", "not_found", "none", "n/a", ""}
 
 
 def _valid_url(u) -> str | None:
-    """Return u if it looks like a real URL, else None."""
+    """Return a normalised URL, or None if the value is a placeholder/empty."""
     if not u:
         return None
     s = str(u).strip()
     if s.lower() in _NOT_FOUND:
         return None
-    if not s.startswith("http"):
-        return None
-    return s
+    if s.startswith("http://") or s.startswith("https://"):
+        return s
+    # Prepend https:// for bare domain-style URLs (www.example.com or example.com/path)
+    if "." in s and not s.startswith("/"):
+        return "https://" + s
+    return None
 
 
 def _build_links(lead: dict) -> list[dict]:
@@ -347,9 +348,21 @@ def _build_links(lead: dict) -> list[dict]:
 
 
 def _build_desc(raw_desc: str, evaluation: dict, lead: dict | None = None) -> str:
-    """Build product description capped at 650 chars.
-    Evaluation notes are BD-internal and not included in the public description.
-    """
-    if not raw_desc:
-        return ""
-    return raw_desc[:650]
+    """Build product description capped at 650 chars, with grants appended if present."""
+    parts = []
+    if raw_desc:
+        parts.append(raw_desc[:650])
+
+    # Grants — embed since the API has no dedicated field
+    grants = (lead or {}).get("grants")
+    if isinstance(grants, str):
+        try:
+            grants = json.loads(grants)
+        except Exception:
+            grants = []
+    if grants and isinstance(grants, list):
+        grant_str = ", ".join(str(g) for g in grants if g)
+        if grant_str:
+            parts.append(f"\n**Grants:** {grant_str}")
+
+    return "\n".join(parts)
