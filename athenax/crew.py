@@ -616,50 +616,64 @@ def build_verifier_crew(leads_json: str) -> Crew:
 
     verify_task = Task(
         description=f"""
-You are given a list of scouted projects. Your job is to verify the URLs in each lead
-and assign a numeric certainty score (0–100) with a short explanation.
+You are given a list of scouted projects. Score each lead 0–100 based on TWO dimensions:
+data completeness (50 pts) and URL verification (50 pts).
 
 ━━━ LEADS TO VERIFY ━━━
 {leads_json}
 
-━━━ FOR EACH LEAD, FOLLOW THESE STEPS ━━━
+━━━ PART A — DATA COMPLETENESS (50 pts total, 5 pts each) ━━━
+Check whether each of the following 10 fields is properly filled. Award 5 pts per field:
 
-① Verify project existence (+20 pts)
-   web_search("[project name] official site") — confirm the project is real and the
-   website URL matches. Award 20 points if confirmed. 0 if not findable.
+  1. name              — present and not "not found"
+  2. short_description — present, ≤ 60 characters, ends with a period
+  3. description       — present, between 500 and 650 characters
+  4. category (sector) — one of exactly: AI & Agents, Crypto, Biotech, Robotics,
+                         RWA, Developer Tools, Infrastructure
+  5. subcategory       — present, specific niche tag (not "not found")
+  6. stage             — one of: Active, Active Development, Beta, Seed, Series A,
+                         Series B, Acquired (not "not found")
+  7. founded           — year present (not "not found")
+  8. links             — at least one of github_url / twitter_url / discord_url / docs_url is present
+  9. backers           — array has at least 1 entry
+ 10. team              — at least 1 member with name + title + bio all filled
 
-② Verify team member URLs (up to +30 pts)
-   For EACH team member that has a linkedin or twitter URL:
-   a. Use web_search("[person name] [company] LinkedIn") or LinkedInPeopleSearchTool.
-      Confirm the URL exists AND the profile matches (right name, right company).
-      If confirmed → keep URL. If not confirmed → set to null.
-   b. Same for twitter: web_search("[person name] [company] Twitter X").
-   Award points: +10 per verified team member URL, capped at 30 total.
-   NEVER guess or construct a URL — only keep confirmed ones.
+━━━ PART B — URL VERIFICATION (50 pts total) ━━━
 
-③ Verify project links (up to +50 pts)
-   github_url  → web_search("[project name] github"):  +15 if confirmed
-   twitter_url → web_search("[project name] twitter"): +15 if confirmed
-   discord_url → web_search("[project name] discord"): +10 if confirmed
-   docs_url    → web_search("[project name] docs"):    +10 if confirmed
-   Set any unconfirmed link to null.
+① Verify project exists on the web (+20 pts)
+   web_search("[project name] official site") — confirm the project is real and the URL matches.
 
-④ Total score → certainty label
-   70–100 → "high"
-   40–69  → "medium"
-   0–39   → "low"
+② Verify team member social URLs (up to +20 pts, +10 per verified URL, max 2)
+   For each team member linkedin / twitter URL:
+   - web_search("[person name] [company] LinkedIn") — confirm profile matches this person.
+   - web_search("[person name] [company] site:x.com OR site:twitter.com") — same for Twitter.
+   If confirmed → keep URL. If unconfirmed or wrong person → set to null.
+   NEVER construct a URL from a name — only keep ones you verified.
 
-⑤ Write a certainty_note — ONE sentence explaining the score.
-   Mention: how many team URLs were verified, which project links were confirmed,
-   and any notable issues (e.g. "GitHub confirmed, Discord not found").
-   Example: "2 of 3 team LinkedIn URLs verified; GitHub and Twitter confirmed; Discord link not found."
+③ Verify project links (up to +10 pts)
+   github_url  → web_search("[project name] github"):   +5 if confirmed, else null
+   twitter_url → web_search("[project name] twitter"):  +5 if confirmed, else null
+   discord_url → web_search("[project name] discord"):  unconfirmed → null (no pts)
+   docs_url    → web_search("[project name] docs"):     unconfirmed → null (no pts)
+
+━━━ SCORING ━━━
+  total = Part A score + Part B score  (max 100)
+  70–100 → certainty = "high"
+  40–69  → certainty = "medium"
+  0–39   → certainty = "low"
+
+━━━ certainty_note ━━━
+Write ONE sentence that covers BOTH dimensions. Mention:
+- which completeness fields are missing (e.g. "no backers, description too short")
+- how many team URLs were verified and which project links were confirmed
+Example: "Missing backers and subcategory; 1 of 2 team LinkedIn URLs verified; GitHub confirmed, Discord not found."
 
 ━━━ OUTPUT FORMAT ━━━
 Return a JSON array — one object per lead — with exactly these fields:
   name             — project name (unchanged)
   certainty        — "high" | "medium" | "low"
   certainty_score  — integer 0–100
-  certainty_note   — 1 sentence explaining the score
+  certainty_note   — 1 sentence (completeness gaps + URL verification summary)
   team             — array, each member: {{name, linkedin (URL or null), twitter (URL or null)}}
   github_url       — verified URL or null
   twitter_url      — verified URL or null
@@ -671,8 +685,8 @@ Keep the array fully closed (ends with `]`).
         expected_output=(
             "A JSON array — one object per lead — each with: "
             "name (string), certainty ('high'|'medium'|'low'), "
-            "certainty_score (integer 0–100), "
-            "certainty_note (1 sentence explaining the score), "
+            "certainty_score (integer 0–100, sum of completeness + URL verification), "
+            "certainty_note (1 sentence: missing fields + URL verification summary), "
             "team (array of {name, linkedin, twitter} — URLs verified or null), "
             "github_url (string or null), twitter_url (string or null), "
             "discord_url (string or null), docs_url (string or null)."

@@ -472,11 +472,24 @@ def run_verify() -> None:
         leads.append(d)
 
     leads_json = json.dumps(
-        [{"name": l["name"], "url": l.get("url", ""),
-          "team": l.get("team") or [],
-          "github_url": l.get("github_url"), "twitter_url": l.get("twitter_url"),
-          "discord_url": l.get("discord_url"), "docs_url": l.get("docs_url")}
-         for l in leads],
+        [{
+            "name":              l["name"],
+            "url":               l.get("url", ""),
+            "short_description": l.get("short_description"),
+            "description":       l.get("description"),
+            "sector":            l.get("sector"),
+            "subcategory":       l.get("subcategory"),
+            "stage":             l.get("stage"),
+            "founded":           l.get("founded"),
+            "backers":           l.get("backers") or [],
+            "team":              l.get("team") or [],
+            "voices":            l.get("voices") or [],
+            "bounties":          l.get("bounties") or [],
+            "github_url":        l.get("github_url"),
+            "twitter_url":       l.get("twitter_url"),
+            "discord_url":       l.get("discord_url"),
+            "docs_url":          l.get("docs_url"),
+        } for l in leads],
         indent=2,
     )
 
