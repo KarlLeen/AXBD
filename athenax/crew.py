@@ -4,6 +4,7 @@ from crewai import Crew, LLM, Task
 
 from athenax.agents.scout import build_scout
 from athenax.agents.evaluator import build_evaluator
+from athenax.agents.verifier import build_verifier
 from athenax.tools.github_tool import GitHubTool
 from athenax.tools.linkedin_tool import (
     LinkedInPeopleSearchTool,
@@ -602,3 +603,74 @@ Return your results as a JSON array.
     )
 
     return Crew(agents=[evaluator], tasks=[eval_task], verbose=True)
+
+
+def build_verifier_crew(leads_json: str) -> Crew:
+    """Verifier-only crew. Takes leads JSON from the DB, checks every team member
+    URL and project link with web_search, and assigns a certainty score per lead."""
+    llm = build_llm()
+    verifier = build_verifier(
+        llm=llm,
+        tools=[SerperTool(), LinkedInProfileTool(), LinkedInPeopleSearchTool()],
+    )
+
+    verify_task = Task(
+        description=f"""
+You are given a list of scouted projects. Your job is to verify the URLs in each lead
+and assign a certainty score based on how much data you can confirm.
+
+━━━ LEADS TO VERIFY ━━━
+{leads_json}
+
+━━━ FOR EACH LEAD, DO THE FOLLOWING ━━━
+
+① Verify project existence
+   web_search("[project name] official site") — confirm the project is real and the
+   website URL in the lead matches. If the project cannot be found at all → certainty = "low".
+
+② Verify team member URLs
+   For EACH team member with a linkedin or twitter URL:
+   a. Use web_search("[person name] [company] LinkedIn") or LinkedInPeopleSearchTool.
+      Confirm the URL exists AND the profile matches this person (right name, right company).
+      If it doesn't match or returns 404 → set that URL to null.
+   b. Use web_search("[person name] [company] Twitter X") to verify twitter URLs.
+      Same rule: if unconfirmed → null.
+   NEVER guess or construct a URL. Only keep URLs you have positively confirmed.
+
+③ Verify project links (github_url, twitter_url, discord_url, docs_url)
+   web_search("[project name] github") to confirm github_url exists.
+   web_search("[project name] twitter") to confirm twitter_url.
+   If a link cannot be confirmed → set it to null.
+
+④ Assign certainty
+   "high"   — project clearly exists on the web; 2+ team member URLs verified;
+               all key project links (website + at least 2 others) confirmed.
+   "medium" — project found; at least 1 team URL verified OR team has real names
+               but URLs unverifiable; most project links confirmed.
+   "low"    — project barely findable OR no team data verifiable OR >50% of links
+               cannot be confirmed.
+
+━━━ OUTPUT FORMAT ━━━
+Return a JSON array — one object per lead — with exactly these fields:
+  name         — project name (unchanged, used to match back to the DB)
+  certainty    — "high" | "medium" | "low"
+  team         — array of team member objects, each with:
+                   name (unchanged), linkedin (verified URL or null), twitter (verified URL or null)
+  github_url   — verified URL or null
+  twitter_url  — verified URL or null
+  discord_url  — verified URL or null
+  docs_url     — verified URL or null
+
+Do NOT include any other fields. Keep the array fully closed (ends with `]`).
+""",
+        expected_output=(
+            "A JSON array — one object per lead — each with: "
+            "name (string), certainty ('high'|'medium'|'low'), "
+            "team (array of {name, linkedin, twitter} — URLs verified or null), "
+            "github_url (string or null), twitter_url (string or null), "
+            "discord_url (string or null), docs_url (string or null)."
+        ),
+        agent=verifier,
+    )
+
+    return Crew(agents=[verifier], tasks=[verify_task], verbose=True)

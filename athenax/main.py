@@ -443,6 +443,101 @@ def _push_pipeline_results(lead_id_map: dict, eval_id_map: dict) -> None:
     print(f"    AthenaX sync: {pushed} pushed, {skipped} already existed, {failed} failed")
 
 
+def run_verify() -> None:
+    """Verify step — check team/project URLs with web search, assign certainty per lead."""
+    init_db()
+    print("\n🔍  Verify: checking URLs and assigning certainty scores...\n")
+
+    from athenax.crew import build_verifier_crew
+
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT * FROM leads WHERE certainty IS NULL ORDER BY created_at DESC"
+        ).fetchall()
+
+    if not rows:
+        print("    Verify: no unverified leads found.\n")
+        return
+
+    leads = []
+    for row in rows:
+        d = dict(row)
+        for field in ("team", "backers", "grants", "voices", "other_links",
+                      "tech_stack", "bd_twitter_handles", "bounties"):
+            if isinstance(d.get(field), str):
+                try:
+                    d[field] = json.loads(d[field])
+                except Exception:
+                    pass
+        leads.append(d)
+
+    leads_json = json.dumps(
+        [{"name": l["name"], "url": l.get("url", ""),
+          "team": l.get("team") or [],
+          "github_url": l.get("github_url"), "twitter_url": l.get("twitter_url"),
+          "discord_url": l.get("discord_url"), "docs_url": l.get("docs_url")}
+         for l in leads],
+        indent=2,
+    )
+
+    crew = build_verifier_crew(leads_json)
+    result = crew.kickoff()
+    tasks_output = getattr(result, "tasks_output", [])
+    raw = tasks_output[0].raw if tasks_output else ""
+    verifications = _extract_json(raw)
+
+    if not isinstance(verifications, list):
+        print("  [WARN] Verifier output could not be parsed.\n")
+        return
+
+    # Build lookup by name
+    ver_map = {v["name"]: v for v in verifications if isinstance(v, dict) and v.get("name")}
+
+    updated = 0
+    with get_connection() as conn:
+        for lead in leads:
+            v = ver_map.get(lead["name"])
+            if not v:
+                continue
+            certainty = v.get("certainty", "low")
+
+            # Update team URLs in the stored JSON
+            team = lead.get("team") or []
+            if isinstance(team, list) and v.get("team"):
+                ver_team_map = {m["name"]: m for m in v["team"] if isinstance(m, dict)}
+                for member in team:
+                    if not isinstance(member, dict):
+                        continue
+                    vm = ver_team_map.get(member.get("name", ""))
+                    if vm:
+                        member["linkedin"] = vm.get("linkedin") or None
+                        member["twitter"] = vm.get("twitter") or None
+
+            updates = {
+                "certainty": certainty,
+                "team": _j(team),
+                "github_url": v.get("github_url") or None,
+                "twitter_url": v.get("twitter_url") or None,
+                "discord_url": v.get("discord_url") or None,
+                "docs_url": v.get("docs_url") or None,
+            }
+            conn.execute(
+                """UPDATE leads SET
+                    certainty=?, team=?, github_url=?, twitter_url=?,
+                    discord_url=?, docs_url=?, updated_at=?
+                   WHERE id=?""",
+                (updates["certainty"], updates["team"],
+                 updates["github_url"], updates["twitter_url"],
+                 updates["discord_url"], updates["docs_url"],
+                 _now(), lead["id"]),
+            )
+            print(f"  ✓ {lead['name']} → certainty={certainty}")
+            updated += 1
+        conn.commit()
+
+    print(f"\n    Verify complete: {updated} leads updated.\n")
+
+
 def run_submit() -> None:
     """Submit step — push all scouted leads to AthenaX (skip already-submitted).
     Does not require evaluation — submits any lead that hasn't been pushed yet."""

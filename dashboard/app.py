@@ -30,6 +30,10 @@ def _count(table: str) -> int:
                 return conn.execute(
                     "SELECT COUNT(*) FROM leads WHERE remote_lead_id IS NOT NULL"
                 ).fetchone()[0]
+            if table == "leads_verified":
+                return conn.execute(
+                    "SELECT COUNT(*) FROM leads WHERE certainty IS NOT NULL"
+                ).fetchone()[0]
             return conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
     except Exception:
         return 0
@@ -38,6 +42,7 @@ def _count(table: str) -> int:
 # step -> (callable name in athenax.main, table whose row count we report)
 _STEPS = {
     "scout":    ("run_scout",      "leads"),
+    "verify":   ("run_verify",     "leads_verified"),
     "evaluate": ("run_evaluation", "evaluations"),
     "submit":   ("run_submit",     "leads_submitted"),
     "pipeline": ("run_pipeline",   "leads"),
@@ -107,7 +112,7 @@ def leads():
                 l.tech_stack, l.linkedin_profile, l.linkedin_recent_post,
                 l.twitter_handle, l.twitter_followers, l.twitter_recent_tweet,
                 l.bd_twitter_handles, l.contact_email,
-                l.velocity_notes, l.conference_origin, l.created_at,
+                l.velocity_notes, l.conference_origin, l.certainty, l.created_at,
                 e.id         AS eval_id,
                 e.compatibility_score,
                 e.reason_for_partnership,
@@ -158,6 +163,11 @@ def _start_step(step: str):
 @app.post("/api/scout/run")
 def trigger_scout():
     return _start_step("scout")
+
+
+@app.post("/api/verify/run")
+def trigger_verify():
+    return _start_step("verify")
 
 
 @app.post("/api/evaluate/run")
@@ -276,6 +286,19 @@ HTML = r"""<!DOCTYPE html>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
         </svg>
         <span x-text="runningStep === 'evaluate' ? 'Evaluating…' : 'Evaluate'"></span>
+      </button>
+      <!-- Verify: check URLs, assign certainty -->
+      <button @click="runVerify()" :disabled="pipelineRunning" title="Verify team/project URLs and assign certainty scores"
+        class="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-medium transition-colors"
+        :class="pipelineRunning ? 'bg-orange-50 border border-orange-200 text-orange-400 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white'">
+        <svg x-show="runningStep !== 'verify'" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+        </svg>
+        <svg x-show="runningStep === 'verify'" class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+        </svg>
+        <span x-text="runningStep === 'verify' ? 'Verifying…' : 'Verify'"></span>
       </button>
       <!-- Submit: push evaluated leads to athenax.co via Internal API -->
       <button @click="runSubmit()" :disabled="pipelineRunning" title="Push evaluated leads to athenax.co (skips already-submitted)"
@@ -409,6 +432,12 @@ HTML = r"""<!DOCTYPE html>
                   :class="stageClass(lead.stage)" x-text="lead.stage"></span>
             <!-- Founded -->
             <span x-show="has(lead.founded)" class="text-xs text-slate-400" x-text="'est. ' + lead.founded"></span>
+            <!-- Certainty badge -->
+            <span x-show="lead.certainty" class="text-xs px-1.5 py-0.5 rounded font-medium"
+                  :class="lead.certainty === 'high'   ? 'bg-emerald-50 text-emerald-600' :
+                           lead.certainty === 'medium' ? 'bg-amber-50 text-amber-600' :
+                                                         'bg-red-50 text-red-500'"
+                  x-text="'● ' + lead.certainty"></span>
           </div>
           <p x-show="lead.short_description" class="text-xs text-slate-400 mt-0.5 truncate" x-text="lead.short_description"></p>
         </div>
@@ -729,8 +758,11 @@ function app() {
         } else if (s.last_step === 'evaluate') {
           this.pipelineMsg = `${label} finished — no new evaluations (nothing pending, or none scored ≥ 55). Check the logs.`;
           this.pipelineMsgType = 'warn';
+        } else if (s.last_step === 'verify') {
+          this.pipelineMsg = `${label} finished — no unverified leads found (all already verified or none scouted yet).`;
+          this.pipelineMsgType = 'warn';
         } else if (s.last_step === 'submit') {
-          this.pipelineMsg = `${label} finished — all evaluated leads already submitted (or none evaluated yet).`;
+          this.pipelineMsg = `${label} finished — all leads already submitted (or none scouted yet).`;
           this.pipelineMsgType = 'warn';
         } else {
           this.pipelineMsg = `${label} finished — no new leads saved. Output may have been empty or unparseable; check the logs.`;
@@ -740,6 +772,7 @@ function app() {
     },
 
     runScout()    { return this._startStep('/api/scout/run',    'Scout'); },
+    runVerify()   { return this._startStep('/api/verify/run',   'Verify'); },
     runEvaluate() { return this._startStep('/api/evaluate/run', 'Evaluate'); },
     runSubmit()   { return this._startStep('/api/submit/run',   'Submit'); },
 
