@@ -183,10 +183,10 @@ class AthenaXClient:
                     "name": m.get("name", ""),
                     "roleLabel": m.get("title") or m.get("roleLabel") or None,
                     "bioNote": m.get("bio") or m.get("bioNote") or None,
-                    "linkedinUrl": m.get("linkedin") or m.get("linkedinUrl") or None,
-                    "twitterUrl": m.get("twitter") or m.get("twitterUrl") or None,
-                    "githubUrl": m.get("github") or m.get("githubUrl") or None,
-                    "otherUrl": m.get("other_url") or m.get("otherUrl") or None,
+                    "linkedinUrl": _valid_url(m.get("linkedin") or m.get("linkedinUrl")),
+                    "twitterUrl": _valid_url(m.get("twitter") or m.get("twitterUrl")),
+                    "githubUrl": _valid_url(m.get("github") or m.get("githubUrl")),
+                    "otherUrl": _valid_url(m.get("other_url") or m.get("otherUrl")),
                 }
                 for m in team
                 if isinstance(m, dict) and m.get("name") and m.get("name") not in ("not found", "")
