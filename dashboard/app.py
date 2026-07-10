@@ -383,6 +383,11 @@ HTML = r"""<!DOCTYPE html>
       <option value="evaluated">Evaluated only</option>
       <option value="pending">Not evaluated</option>
     </select>
+    <select x-model="filterVerify" class="text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-orange-200">
+      <option value="">All verified</option>
+      <option value="verified">Verified only</option>
+      <option value="unverified">Not verified</option>
+    </select>
   </div>
 
   <div x-show="errorMsg" x-cloak class="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2">
@@ -577,8 +582,37 @@ HTML = r"""<!DOCTYPE html>
 
           </div>
 
-          <!-- RIGHT: Evaluation (2/5) -->
+          <!-- RIGHT: Verification + Evaluation (2/5) -->
           <div class="md:col-span-2 space-y-4">
+
+            <!-- Verification panel: field checklist + certainty -->
+            <div class="p-3 rounded-xl border border-slate-200">
+              <div class="flex items-center justify-between mb-2">
+                <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">Data Quality</p>
+                <template x-if="lead.certainty">
+                  <span class="text-xs px-2 py-0.5 rounded-full font-semibold"
+                        :class="lead.certainty === 'high'   ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' :
+                                 lead.certainty === 'medium' ? 'bg-amber-50 text-amber-600 border border-amber-200' :
+                                                               'bg-red-50 text-red-500 border border-red-200'"
+                        x-text="(lead.certainty_score != null ? lead.certainty_score + ' · ' : '') + lead.certainty"></span>
+                </template>
+                <span x-show="!lead.certainty" class="text-xs text-slate-400 italic">Not verified yet</span>
+              </div>
+              <p x-show="lead.certainty_note" class="text-xs text-slate-500 italic mb-2 leading-relaxed" x-text="lead.certainty_note"></p>
+              <div class="space-y-1 mt-2">
+                <template x-for="f in verifyFields(lead)" :key="f.label">
+                  <div class="flex items-start gap-2 text-xs py-0.5">
+                    <span class="flex-shrink-0 w-3.5 font-bold mt-px"
+                          :class="f.ok ? 'text-green-500' : f.optional ? 'text-slate-300' : 'text-red-400'"
+                          x-text="f.ok ? '✓' : '—'"></span>
+                    <span class="flex-1 leading-relaxed"
+                          :class="f.ok ? 'text-slate-700' : f.optional ? 'text-slate-400' : 'text-red-400'"
+                          x-text="f.label"></span>
+                    <span x-show="f.value" class="text-slate-400 text-right truncate max-w-28 flex-shrink-0" x-text="f.value"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
 
             <!-- Not evaluated yet -->
             <div x-show="!lead.eval_id" class="p-4 rounded-xl border border-dashed border-slate-200 text-center">
@@ -709,6 +743,7 @@ function app() {
     runningStep: null,
     pipelineMsg: '',
     pipelineMsgType: 'ok',
+    filterVerify: '',
     _pollTimer: null,
 
     get filtered() {
@@ -723,8 +758,33 @@ function app() {
         if (this.filterCat && l.sector !== this.filterCat) return false;
         if (this.filterEval === 'evaluated' && !l.eval_id) return false;
         if (this.filterEval === 'pending'   &&  l.eval_id) return false;
+        if (this.filterVerify === 'verified'   && !l.certainty) return false;
+        if (this.filterVerify === 'unverified' &&  l.certainty) return false;
         return true;
       });
+    },
+
+    verifyFields(lead) {
+      const h  = v => v != null && v !== '' && String(v).toLowerCase() !== 'not found' && String(v).toLowerCase() !== 'n/a';
+      const ha = a => Array.isArray(a) && a.length > 0;
+      const teamBio = (lead.team||[]).filter(m => h(m.bio) || h(m.bioNote));
+      const linkCount = [lead.website||lead.url, lead.github_url, lead.twitter_url, lead.discord_url, lead.docs_url].filter(h).length;
+      return [
+        { label: 'Name',             ok: h(lead.name),            value: lead.name },
+        { label: 'Short Description ≤60 chars', ok: h(lead.short_description), value: lead.short_description ? lead.short_description.slice(0,40)+'…' : '' },
+        { label: 'Description 550–650 chars',   ok: h(lead.description) && (lead.description||'').length >= 200,
+          value: lead.description ? (lead.description.length + ' chars') : '' },
+        { label: 'Category',         ok: h(lead.sector),          value: lead.sector },
+        { label: 'Subcategory',      ok: h(lead.subcategory),     value: lead.subcategory },
+        { label: 'Stage',            ok: h(lead.stage),           value: lead.stage },
+        { label: 'Founded',          ok: h(lead.founded),         value: lead.founded ? String(lead.founded) : '' },
+        { label: 'Links',            ok: linkCount > 0,           value: linkCount ? linkCount + ' found' : '' },
+        { label: 'Backers',          ok: ha(lead.backers),        value: ha(lead.backers) ? lead.backers.slice(0,2).join(', ') : '' },
+        { label: 'Team with bio',    ok: ha(lead.team) && teamBio.length > 0,
+          value: ha(lead.team) ? lead.team.length + ' members, ' + teamBio.length + ' with bio' : '' },
+        { label: 'Voices',           ok: ha(lead.voices),         value: ha(lead.voices) ? lead.voices.length + ' found' : '', optional: true },
+        { label: 'Bounties',         ok: ha(lead.bounties),       value: ha(lead.bounties) ? lead.bounties.length + ' found' : '', optional: true },
+      ];
     },
 
     async init() {
