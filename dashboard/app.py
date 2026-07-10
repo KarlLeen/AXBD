@@ -91,10 +91,11 @@ _JSON_FIELDS = ("tech_stack", "bd_twitter_handles", "other_links",
 @app.get("/api/stats")
 def stats():
     with _db() as conn:
-        total  = conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
-        evaled = conn.execute("SELECT COUNT(*) FROM evaluations").fetchone()[0]
-        high   = conn.execute("SELECT COUNT(*) FROM evaluations WHERE compatibility_score >= 80").fetchone()[0]
-    return {"total_leads": total, "evaluations": evaled, "high_score": high}
+        total    = conn.execute("SELECT COUNT(*) FROM leads").fetchone()[0]
+        evaled   = conn.execute("SELECT COUNT(*) FROM evaluations").fetchone()[0]
+        high     = conn.execute("SELECT COUNT(*) FROM evaluations WHERE compatibility_score >= 80").fetchone()[0]
+        verified = conn.execute("SELECT COUNT(*) FROM leads WHERE certainty IS NOT NULL").fetchone()[0]
+    return {"total_leads": total, "evaluations": evaled, "high_score": high, "verified": verified}
 
 
 @app.get("/api/leads")
@@ -344,10 +345,14 @@ HTML = r"""<!DOCTYPE html>
 
 <!-- Stats + summary -->
 <div class="max-w-4xl mx-auto px-6 mt-5">
-  <div class="grid grid-cols-3 gap-3 mb-4">
+  <div class="grid grid-cols-4 gap-3 mb-4">
     <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
       <p class="text-xs text-slate-500 font-medium">Total Leads</p>
       <p class="text-2xl font-bold text-slate-800 mt-0.5" x-text="stats.total_leads"></p>
+    </div>
+    <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
+      <p class="text-xs text-slate-500 font-medium">Verified</p>
+      <p class="text-2xl font-bold text-orange-500 mt-0.5" x-text="stats.verified ?? 0"></p>
     </div>
     <div class="bg-white rounded-xl border border-slate-200 px-4 py-3">
       <p class="text-xs text-slate-500 font-medium">Evaluated</p>
@@ -748,21 +753,24 @@ function app() {
     },
 
     showPipelineResult(s) {
-      const label = { scout: 'Scout', evaluate: 'Evaluate', submit: 'Submit', pipeline: 'Pipeline' }[s.last_step] || 'Run';
-      const noun  = s.last_step === 'evaluate' ? 'evaluation' : s.last_step === 'submit' ? 'submission' : 'lead';
+      const label = { scout: 'Scout', verify: 'Verify', evaluate: 'Evaluate', submit: 'Submit', pipeline: 'Pipeline' }[s.last_step] || 'Run';
+      const noun  = s.last_step === 'evaluate' ? 'evaluation'
+                  : s.last_step === 'submit'   ? 'submission'
+                  : s.last_step === 'verify'   ? 'lead verified'
+                  : 'lead';
       if (s.last_status === 'error') {
         this.pipelineMsg = `${label} failed: ` + (s.last_error || 'unknown error');
         this.pipelineMsgType = 'error';
       } else if (s.last_status === 'ok') {
         const n = s.last_added;
         if (n > 0) {
-          this.pipelineMsg = `${label} finished — ${n} new ${noun}${n===1?'':'s'} (${s.last_total} total).`;
+          this.pipelineMsg = `${label} finished — ${n} ${noun}${n===1?'':'s'} (${s.last_total} total).`;
           this.pipelineMsgType = 'ok';
         } else if (s.last_step === 'evaluate') {
           this.pipelineMsg = `${label} finished — no new evaluations (nothing pending, or none scored ≥ 55). Check the logs.`;
           this.pipelineMsgType = 'warn';
         } else if (s.last_step === 'verify') {
-          this.pipelineMsg = `${label} finished — no unverified leads found (all already verified or none scouted yet).`;
+          this.pipelineMsg = `${label} finished — all ${s.last_total} leads already verified.`;
           this.pipelineMsgType = 'warn';
         } else if (s.last_step === 'submit') {
           this.pipelineMsg = `${label} finished — all leads already submitted (or none scouted yet).`;
