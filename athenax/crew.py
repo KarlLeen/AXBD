@@ -2,7 +2,7 @@
 import os
 from crewai import Crew, LLM, Task
 
-from athenax.agents.scout import build_scout
+from athenax.agents.scout import build_scout, build_listing_scout
 from athenax.agents.evaluator import build_evaluator
 from athenax.agents.verifier import build_verifier
 from athenax.agents.enricher import build_enricher
@@ -829,3 +829,94 @@ Return a SINGLE JSON object (not an array) for this one company.
     )
 
     return Crew(agents=[enricher], tasks=[enrich_task], verbose=True)
+
+
+def build_listing_scout_crew(exclude_context: str, sector_hint: str = "") -> Crew:
+    """Lightweight listing scout — name/Website/Twitter only (~15–25 leads / kickoff).
+
+    Tools: Serper, Twitter, GitHub, Cryptorank. No LinkedIn deep-dive.
+    Output is a JSON array of {name, website, twitter, category?} — for Phase A
+    of Scout-then-Enrich. Deep fields are filled later by build_enrichment_crew.
+    """
+    llm = build_llm()
+    tools = [
+        SerperTool(),
+        TwitterTool(),
+        TwitterQueryTool(),
+        GitHubTool(),
+    ]
+    # Cryptorank is optional — skip when the Sandbox key is absent so the
+    # lightweight scout does not burn iterations on missing-credential errors.
+    if os.environ.get("CRYPTORANK_API_KEY", "").strip():
+        tools.append(CryptorankTool())
+    scout = build_listing_scout(llm=llm, tools=tools)
+
+    focus = sector_hint.strip() or (
+        "rotate across AI & Agents, Crypto, Developer Tools, Infrastructure, "
+        "RWA, Biotech, and Robotics"
+    )
+    target_n = "15–25"
+
+    scout_task = Task(
+        description=f"""
+You are building a LIGHTWEIGHT candidate list for the AthenaX Launchpad listing sheet.
+
+AthenaX sectors:
+{SECTORS}
+
+━━━ THIS ROUND'S SECTOR FOCUS ━━━
+Prioritize: {focus}
+Also include 2–4 strong leads from OTHER sectors so coverage stays balanced.
+
+━━━ OUTPUT CONTRACT (HARD) ━━━
+Return ONLY a JSON array of objects with these keys:
+  • name     — official project/company name (string)
+  • website  — real https:// product/company URL (REQUIRED)
+  • twitter  — official X/Twitter URL or @handle (preferred; "" if truly none)
+  • category — optional; one of exactly:
+      "AI & Agents" | "Biotech" | "Crypto" | "Developer Tools" |
+      "Infrastructure" | "Robotics" | "RWA"
+
+Do NOT include team, backers, bios, descriptions, Discord, GitHub, Docs, stage,
+founded, short_desc, or any other deep-profile fields. Enrichment is a later step.
+
+Target {target_n} NEW leads this kickoff. Prefer a complete closed array over a
+truncated longer one. Close the array with `]`.
+
+━━━ HARD RULES ━━━
+1. Every lead MUST have a real website URL you saw in a tool result (Serper,
+   Cryptorank, GitHub homepage, or Twitter bio link). NEVER invent or guess URLs.
+2. Skip anything on the exclusion list (case-insensitive name match).
+3. Skip household names that are obviously already listed (OpenAI, Google, etc.)
+   unless they somehow are not excluded — prefer under-the-radar / early projects.
+4. Prefer projects with a working product or active open-source presence.
+5. Do not output leads with only a Twitter handle and no website.
+6. Twitter is optional but preferred when the official account is findable.
+
+━━━ SEARCH STRATEGY (breadth, not depth) ━━━
+1. Serper — run several focused discovery queries for THIS ROUND'S sector focus
+   (and a couple for other sectors). Examples:
+   • "{{sector}} startup launched 2025 OR 2026" / "YC {{sector}} batch"
+   • "{{sector}} open source project" / "raised seed {{sector}}"
+   • VC portfolio / hackathon winners in that sector
+2. GitHub — search repos by sector keywords; use homepage URL when present.
+3. Twitter/X — hashtag / query search for builders in the focus sector; follow
+   bio links to websites when available.
+4. Cryptorank — optional lookup ONLY to confirm a crypto project's website /
+   twitter when you already have a candidate name. Do not deep-profile.
+
+For each candidate: confirm website from a tool result, grab Twitter if easy,
+assign category if clear, then move on. Do NOT spend iterations on team/backers.
+
+{exclude_context}
+""",
+        expected_output=(
+            f"A JSON array of {target_n} objects, each with: "
+            "name (string), website (https URL), twitter (URL or @handle or \"\"), "
+            "and optional category (one of the 7 exact sector names). "
+            "No team/backers/bios/descriptions. Array fully closed with `]`."
+        ),
+        agent=scout,
+    )
+
+    return Crew(agents=[scout], tasks=[scout_task], verbose=True)
