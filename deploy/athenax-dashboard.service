@@ -9,6 +9,7 @@ User=athenax
 WorkingDirectory=/opt/athenax
 EnvironmentFile=/opt/athenax/.env
 Environment=HOME=/opt/athenax
+Environment=UV_CACHE_DIR=/opt/athenax/.cache/uv
 Environment=DASHBOARD_PORT=8080
 Environment=DASHBOARD_DEV=false
 ExecStart=/opt/athenax/.venv/bin/athenax dashboard
@@ -16,8 +17,7 @@ Restart=on-failure
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-MemoryMax=950M
-MemorySwapMax=2G
+MemoryMax=2G
 OOMPolicy=continue
 Nice=15
 

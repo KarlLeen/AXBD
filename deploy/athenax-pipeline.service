@@ -9,13 +9,14 @@ User=athenax
 WorkingDirectory=/opt/athenax
 EnvironmentFile=/opt/athenax/.env
 Environment=HOME=/opt/athenax
+Environment=UV_CACHE_DIR=/opt/athenax/.cache/uv
 ExecStart=/opt/athenax/.venv/bin/athenax schedule --day monday --time 09:00
 Restart=on-failure
 RestartSec=60
 StandardOutput=journal
 StandardError=journal
-# 1 GB RAM optimisation — pipeline peaks at ~800 MB; swap handles the rest
-MemoryMax=900M
+# Pipeline peaks at ~800 MB; 2.5G cap leaves headroom for dashboard on 4 GB VPS
+MemoryMax=2500M
 OOMPolicy=continue
 Nice=10
 

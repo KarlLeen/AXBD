@@ -2,9 +2,10 @@
 import os
 from crewai import Crew, LLM, Task
 
-from athenax.agents.scout import build_scout
+from athenax.agents.scout import build_scout, build_listing_scout
 from athenax.agents.evaluator import build_evaluator
 from athenax.agents.verifier import build_verifier
+from athenax.agents.enricher import build_enricher
 from athenax.tools.github_tool import GitHubTool
 from athenax.tools.linkedin_tool import (
     LinkedInPeopleSearchTool,
@@ -12,11 +13,12 @@ from athenax.tools.linkedin_tool import (
     LinkedInPostSearchTool,
     LinkedInProfileTool,
 )
-from athenax.tools.twitter_tool import TwitterTool
+from athenax.tools.twitter_tool import TwitterTool, TwitterUserTool, TwitterQueryTool
 from athenax.tools.serper_tool import SerperTool
 from athenax.tools.coingecko_tool import CoinGeckoTool
+from athenax.tools.cryptorank_tool import CryptorankTool
 
-MODEL = "deepseek/deepseek-chat"   # DeepSeek-V3 via official API
+MODEL = "deepseek/deepseek-v4-flash"   # deepseek-chat retired; v4-flash replaces it (reasoning model)
 
 # ── AthenaX Selection Criteria (embedded for agent context) ──────────────────
 
@@ -703,3 +705,218 @@ Keep the array fully closed (ends with `]`).
     )
 
     return Crew(agents=[verifier], tasks=[verify_task], verbose=True)
+
+
+def build_enrichment_crew(company: dict) -> Crew:
+    """Enrichment crew for ONE already-known company (name/website/twitter given).
+
+    Used to backfill a spreadsheet row that already has name/website/twitter but
+    is missing category, subcategory, description, stage, founded, discord/github/
+    docs links, team, and backers. One company per crew keeps the LLM's 8192-token
+    output ceiling comfortable and avoids truncating the team's bio detail.
+    """
+    llm = build_llm()
+    enricher = build_enricher(
+        llm=llm,
+        tools=[
+            CryptorankTool(),
+            GitHubTool(),
+            SerperTool(),
+            LinkedInPeopleSearchTool(),
+            LinkedInCompanySearchTool(),
+            LinkedInProfileTool(),
+            TwitterUserTool(),
+            TwitterQueryTool(),
+            CoinGeckoTool(),
+        ],
+    )
+
+    name = company["name"]
+    website = company.get("website") or ""
+    twitter = company.get("twitter") or ""
+
+    enrich_task = Task(
+        description=f"""
+You are backfilling a partnerships database row for a company we already know about.
+Do NOT search for or suggest a different company — research exactly this one.
+
+━━━ KNOWN FACTS (do not re-discover, use as-is) ━━━
+name: {name}
+website: {website or "not given — find it via web_search if possible"}
+twitter: {twitter or "not given"}
+
+━━━ AthenaX SECTORS ━━━
+{SECTORS}
+
+━━━ RESEARCH STEPS ━━━
+1. FIRST call cryptorank_lookup("{name}") for verified project links (website, github,
+   twitter, discord, docs/gitbook) and description. Map those into discord_url /
+   github_url / docs_url when present. Cryptorank Sandbox does NOT include team members
+   or fundraising investors — never invent those from a Cryptorank miss.
+2. If a twitter handle/URL is known (from known facts or Cryptorank), call
+   twitter_user_lookup once. Read bio / expanded_urls / recent tweets for Discord/docs/
+   GitHub links, founding year, team names, and funding mentions. Optionally ONE
+   twitter_query like 'from:<handle> (founder OR funding OR raised OR backed)'.
+3. SERPER BUDGET — at most TWO web_search calls for this company (credits are limited).
+   Prefer a combined query, e.g.:
+   web_search("{name} founder OR co-founder OR funding OR investors OR founded")
+   and if still missing team/backers/year:
+   web_search("{name} {website} team investors").
+   Skip "what is" / github / discord / docs web searches when Cryptorank or Twitter
+   already provided those links or a solid description.
+4. For TEAM: first find candidate NAMES from steps 1–3 (Cryptorank/Twitter/web_search),
+   then verify each person INDIVIDUALLY — do NOT search by company alone and pick from a
+   crowd. For each named person, call linkedin_people_search with '"{{person's full name}}"
+   {name}' (their name AND the company together, e.g. '"Shahed Khan" Loom'). A result is a
+   match ONLY if BOTH hold: (a) the result's firstName+lastName matches the person's actual
+   name — not just a similar first name — and (b) the headline/current_company clearly
+   mentions {name}. Common first names (Shahed, John, Alex...) return many unrelated
+   people when you search by company alone; searching name+company together and requiring
+   an exact name match on the result is what prevents attaching a stranger's profile to
+   your team member. If no result satisfies BOTH checks, that person's linkedin is
+   "not found" — do not settle for the closest name. Never treat a /company/ page as a
+   team member. Never call linkedin_profile with a company slug — only a person /in/
+   vanity from search results.
+5. If GitHub still missing after Cryptorank/Twitter, ONE github_search is OK (not Serper).
+6. If crypto/token-like, optional coingecko_search (not Serper).
+
+Do NOT burn Serper retries on empty/failed queries — move on with other tools.
+
+━━━ FIELDS TO PRODUCE ━━━
+• category — MUST be exactly one of the 7 sector names above.
+• subcategory — free-form specific niche tag (e.g. "ZK Proofs", "Foundation Models").
+• short_desc — one sharp phrase naming WHAT it is, ~50-80 characters, NO trailing period.
+  e.g. "Open source browser API for controlling fleets of cloud browsers"
+• description — 2-3 sentences, ~350-450 characters. What it builds/does, who it's for, and
+  how it differs from the obvious alternative (name a comparable tool/approach if one
+  exists). Skip generic traction filler — be concrete and specific, not promotional.
+• stage — one of: "Active" | "Active Development" | "Beta" | "Seed" | "Series A" |
+  "Series B" | "Acquired" | "Not Active".
+• founded — year string (e.g. "2023"), or "not found" if genuinely unfindable.
+• discord_url / github_url / docs_url — ONLY a real URL you found. If not found, OMIT the
+  field entirely (do not write "not found" or a placeholder for link fields).
+• team — array of founders/key leadership. Each member: {{name, title, bio, linkedin}}.
+  - bio: 2–3 bullet points ("• " prefix), PRIOR experience only (not current role), under
+    300 characters total. e.g. "• Ex-Google engineer\\n• Founded prior startup, acquired by X"
+    Leave "" if no prior-experience detail was actually found — do not pad with the person's
+    current title again.
+  - linkedin: FULL URL, but ONLY if found in an actual search result or the person's own
+    bio/team page. NEVER construct, guess, or pattern-match one from a person's name —
+    a plausible-looking slug is still fabrication. If linkedin_people_search returned no
+    matching hit for this person, the answer is "not found" — full stop, no exceptions,
+    even if you feel confident what their handle "probably" is.
+  - Do not include a twitter field per team member.
+  - Empty array [] only if the company genuinely has no discoverable team.
+• backers — array of strings: VC/angel/accelerator names only (not grants/prizes).
+  Empty array [] if none found.
+
+Never fabricate a fact. If, after genuinely searching, a scalar field can't be found, use
+the exact string "not found" (except link fields, which are omitted instead — see above).
+
+Return a SINGLE JSON object (not an array) for this one company.
+""",
+        expected_output=(
+            "A single JSON object with: category (one of the 7 exact sector names), "
+            "subcategory, short_desc (~50-80 chars, no trailing period), "
+            "description (2-3 sentences, ~350-450 chars), "
+            "stage ('Active'|'Active Development'|'Beta'|'Seed'|'Series A'|'Series B'|"
+            "'Acquired'|'Not Active'), founded (year string or 'not found'), "
+            "discord_url/github_url/docs_url (real URL, omitted if not found), "
+            "team (array of {name, title, bio, linkedin}, [] if none found), "
+            "backers (array of strings, [] if none found)."
+        ),
+        agent=enricher,
+    )
+
+    return Crew(agents=[enricher], tasks=[enrich_task], verbose=True)
+
+
+def build_listing_scout_crew(exclude_context: str, sector_hint: str = "") -> Crew:
+    """Lightweight listing scout — name/Website/Twitter only (~15–25 leads / kickoff).
+
+    Tools: Serper, Twitter, GitHub, Cryptorank. No LinkedIn deep-dive.
+    Output is a JSON array of {name, website, twitter, category?} — for Phase A
+    of Scout-then-Enrich. Deep fields are filled later by build_enrichment_crew.
+    """
+    llm = build_llm()
+    tools = [
+        SerperTool(),
+        TwitterTool(),
+        TwitterQueryTool(),
+        GitHubTool(),
+    ]
+    # Cryptorank is optional — skip when the Sandbox key is absent so the
+    # lightweight scout does not burn iterations on missing-credential errors.
+    if os.environ.get("CRYPTORANK_API_KEY", "").strip():
+        tools.append(CryptorankTool())
+    scout = build_listing_scout(llm=llm, tools=tools)
+
+    focus = sector_hint.strip() or (
+        "rotate across AI & Agents, Crypto, Developer Tools, Infrastructure, "
+        "RWA, Biotech, and Robotics"
+    )
+    target_n = "15–25"
+
+    scout_task = Task(
+        description=f"""
+You are building a LIGHTWEIGHT candidate list for the AthenaX Launchpad listing sheet.
+
+AthenaX sectors:
+{SECTORS}
+
+━━━ THIS ROUND'S SECTOR FOCUS ━━━
+Prioritize: {focus}
+Also include 2–4 strong leads from OTHER sectors so coverage stays balanced.
+
+━━━ OUTPUT CONTRACT (HARD) ━━━
+Return ONLY a JSON array of objects with these keys:
+  • name     — official project/company name (string)
+  • website  — real https:// product/company URL (REQUIRED)
+  • twitter  — official X/Twitter URL or @handle (preferred; "" if truly none)
+  • category — optional; one of exactly:
+      "AI & Agents" | "Biotech" | "Crypto" | "Developer Tools" |
+      "Infrastructure" | "Robotics" | "RWA"
+
+Do NOT include team, backers, bios, descriptions, Discord, GitHub, Docs, stage,
+founded, short_desc, or any other deep-profile fields. Enrichment is a later step.
+
+Target {target_n} NEW leads this kickoff. Prefer a complete closed array over a
+truncated longer one. Close the array with `]`.
+
+━━━ HARD RULES ━━━
+1. Every lead MUST have a real website URL you saw in a tool result (Serper,
+   Cryptorank, GitHub homepage, or Twitter bio link). NEVER invent or guess URLs.
+2. Skip anything on the exclusion list (case-insensitive name match).
+3. Skip household names that are obviously already listed (OpenAI, Google, etc.)
+   unless they somehow are not excluded — prefer under-the-radar / early projects.
+4. Prefer projects with a working product or active open-source presence.
+5. Do not output leads with only a Twitter handle and no website.
+6. Twitter is optional but preferred when the official account is findable.
+
+━━━ SEARCH STRATEGY (breadth, not depth) ━━━
+1. Serper — run several focused discovery queries for THIS ROUND'S sector focus
+   (and a couple for other sectors). Examples:
+   • "{{sector}} startup launched 2025 OR 2026" / "YC {{sector}} batch"
+   • "{{sector}} open source project" / "raised seed {{sector}}"
+   • VC portfolio / hackathon winners in that sector
+2. GitHub — search repos by sector keywords; use homepage URL when present.
+3. Twitter/X — hashtag / query search for builders in the focus sector; follow
+   bio links to websites when available.
+4. Cryptorank — optional lookup ONLY to confirm a crypto project's website /
+   twitter when you already have a candidate name. Do not deep-profile.
+
+For each candidate: confirm website from a tool result, grab Twitter if easy,
+assign category if clear, then move on. Do NOT spend iterations on team/backers.
+
+{exclude_context}
+""",
+        expected_output=(
+            f"A JSON array of {target_n} objects, each with: "
+            "name (string), website (https URL), twitter (URL or @handle or \"\"), "
+            "and optional category (one of the 7 exact sector names). "
+            "No team/backers/bios/descriptions. Array fully closed with `]`."
+        ),
+        agent=scout,
+    )
+
+    return Crew(agents=[scout], tasks=[scout_task], verbose=True)

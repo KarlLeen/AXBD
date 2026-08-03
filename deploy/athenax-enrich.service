@@ -1,0 +1,32 @@
+[Unit]
+Description=AthenaX BD Agent — listing enrichment (W6 spreadsheet backfill)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=athenax
+WorkingDirectory=/opt/athenax
+EnvironmentFile=/opt/athenax/.env
+Environment=HOME=/opt/athenax
+Environment=UV_CACHE_DIR=/opt/athenax/.cache/uv
+Environment=ENRICH_PROGRESS_PATH=/opt/athenax/data/enrich_progress.json
+Environment=ENRICH_MAX_SERPER_CALLS=1500
+ExecStart=/opt/athenax/.venv/bin/python /opt/athenax/scripts/enrich_listing.py \
+  --input /opt/athenax/data/athenax_listing_w6_enriched.xlsx \
+  --sheet "Week 6 (Huge list)" \
+  --start 0 --limit 0 --force --fields team \
+  --output /opt/athenax/data/athenax_listing_w6_enriched.xlsx \
+  --retries 2 \
+  --sleep 3 \
+  --progress /opt/athenax/data/enrich_progress.json
+Restart=on-failure
+RestartSec=60
+StandardOutput=journal
+StandardError=journal
+MemoryMax=3G
+OOMPolicy=continue
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

@@ -25,3 +25,27 @@ def build_scout(llm: LLM, tools: list) -> Agent:
         verbose=True,
         max_iter=15,
     )
+
+
+def build_listing_scout(llm: LLM, tools: list) -> Agent:
+    """Lightweight scout: name / website / twitter only — no deep profiles."""
+    return Agent(
+        role="Listing Discovery Scout",
+        goal=(
+            "Find NEW frontier-tech projects across AthenaX sectors "
+            f"({SECTORS}) and return ONLY name, website URL, Twitter/X, and optional "
+            "category. Maximize coverage of real projects with working websites; "
+            "do not deep-profile teams, backers, or bios."
+        ),
+        backstory=(
+            "You are a fast deal-sourcer building a candidate list for later enrichment. "
+            "Your job is breadth: many real projects with verified website URLs, not "
+            "deep research. You never invent URLs or company names. If you cannot "
+            "confirm a real website from a tool result, you skip the project. "
+            "You ignore exclusion-list names and already-scouted duplicates."
+        ),
+        tools=tools,
+        llm=llm,
+        verbose=True,
+        max_iter=12,
+    )
