@@ -219,6 +219,49 @@ def export_xlsx():
     )
 
 
+# ── Listing enrichment progress (separate process writes the JSON file) ───────
+
+_ENRICH_PROGRESS = Path(os.getenv(
+    "ENRICH_PROGRESS_PATH",
+    str(Path(__file__).parent.parent / "data" / "enrich_progress.json"),
+))
+
+
+@app.get("/api/enrich/status")
+def enrich_status():
+    """Live progress of scripts/enrich_listing.py (file-backed, survives restarts)."""
+    from athenax.enrich_progress import load as load_enrich
+    state = load_enrich(_ENRICH_PROGRESS)
+    out = state.get("output")
+    state["download_ready"] = bool(out and Path(out).exists())
+    # Stale "running" if the PID is gone (process crashed without writing finally).
+    pid = state.get("pid")
+    if state.get("running") and pid:
+        try:
+            os.kill(int(pid), 0)
+        except (ProcessLookupError, PermissionError, ValueError, TypeError, OSError):
+            state["running"] = False
+            if state.get("last_status") == "running":
+                state["last_status"] = "stale"
+    return state
+
+
+@app.get("/api/enrich/download")
+def enrich_download():
+    """Download the partially/fully enriched listing spreadsheet."""
+    from athenax.enrich_progress import load as load_enrich
+    state = load_enrich(_ENRICH_PROGRESS)
+    out = state.get("output")
+    if not out or not Path(out).exists():
+        raise HTTPException(status_code=404, detail="No enriched spreadsheet yet")
+    path = Path(out)
+    return Response(
+        content=path.read_bytes(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{path.name}"'},
+    )
+
+
 # ── HTML ──────────────────────────────────────────────────────────────────────
 
 HTML = r"""<!DOCTYPE html>
@@ -402,6 +445,51 @@ HTML = r"""<!DOCTYPE html>
              :                             'bg-green-50 border border-green-200 text-green-700'">
     <span x-text="pipelineMsg"></span>
     <button @click="pipelineMsg=''" class="opacity-50 hover:opacity-100 flex-shrink-0">✕</button>
+  </div>
+
+  <!-- Listing enrichment progress (W6 sheet backfill) -->
+  <div x-show="enrich.total > 0 || enrich.running" x-cloak
+       class="mb-4 bg-white rounded-xl border border-slate-200 px-4 py-3">
+    <div class="flex items-center justify-between gap-3 mb-2">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="text-xs font-semibold text-slate-700">Listing Enrichment</span>
+        <span class="text-xs px-1.5 py-0.5 rounded font-medium"
+              :class="enrich.running ? 'bg-indigo-50 text-indigo-600' :
+                      enrich.last_status === 'ok' ? 'bg-green-50 text-green-700' :
+                      enrich.last_status === 'error' || enrich.last_status === 'stale' ? 'bg-red-50 text-red-600' :
+                      'bg-slate-100 text-slate-500'"
+              x-text="enrich.running ? 'running' : (enrich.last_status || 'idle')"></span>
+        <span x-show="enrich.current_name" class="text-xs text-slate-400 truncate"
+              x-text="'now: ' + enrich.current_name"></span>
+      </div>
+      <a x-show="enrich.download_ready" href="/api/enrich/download"
+         class="text-xs px-2.5 py-1 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">
+        Download xlsx
+      </a>
+    </div>
+    <div class="h-2 bg-slate-100 rounded-full overflow-hidden mb-2">
+      <div class="h-full bg-indigo-500 transition-all duration-500"
+           :style="'width:' + enrichPct() + '%'"></div>
+    </div>
+    <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+      <span x-text="(enrich.done||0) + ' / ' + (enrich.total||0) + ' filled'"></span>
+      <span x-text="'skipped ' + (enrich.skipped||0)"></span>
+      <span x-text="'failed ' + (enrich.failed||0)"></span>
+      <span x-text="enrichPct() + '%'"></span>
+      <span x-show="enrich.updated_at" class="text-slate-400"
+            x-text="'updated ' + (enrich.updated_at || '').replace('T',' ').slice(0,19) + 'Z'"></span>
+    </div>
+    <div x-show="(enrich.recent||[]).length" class="mt-2 border-t border-slate-100 pt-2 space-y-0.5 max-h-28 overflow-y-auto">
+      <template x-for="(row, idx) in (enrich.recent || []).slice().reverse().slice(0,8)" :key="idx">
+        <div class="flex items-center gap-2 text-xs text-slate-500">
+          <span class="w-14 font-medium"
+                :class="row.status==='ok' ? 'text-green-600' : row.status==='failed' ? 'text-red-500' : 'text-slate-400'"
+                x-text="row.status"></span>
+          <span class="truncate flex-1" x-text="row.name"></span>
+          <span x-show="row.seconds" class="text-slate-400" x-text="row.seconds + 's'"></span>
+        </div>
+      </template>
+    </div>
   </div>
 
   <!-- Lead count -->
@@ -745,6 +833,14 @@ function app() {
     pipelineMsgType: 'ok',
     filterVerify: '',
     _pollTimer: null,
+    enrich: { total: 0, done: 0, skipped: 0, failed: 0, running: false, recent: [] },
+    _enrichPoll: null,
+
+    enrichPct() {
+      const t = this.enrich.total || 0;
+      if (!t) return 0;
+      return Math.min(100, Math.round(100 * (this.enrich.done || 0) / t));
+    },
 
     get filtered() {
       return this.allLeads.filter(l => {
@@ -790,11 +886,19 @@ function app() {
     async init() {
       await this.refresh();
       await this.checkPipelineStatus();
+      await this.checkEnrichStatus();
       // If a run is already in flight (e.g. started in another tab), poll it.
       if (this.pipelineRunning && !this._pollTimer) {
         this._pollTimer = setInterval(() => this.checkPipelineStatus(), 10000);
       }
+      this._enrichPoll = setInterval(() => this.checkEnrichStatus(), 5000);
       setInterval(() => this.refresh(), 30000);
+    },
+
+    async checkEnrichStatus() {
+      try {
+        this.enrich = await this.getJSON('/api/enrich/status');
+      } catch(e) {}
     },
 
     async checkPipelineStatus() {

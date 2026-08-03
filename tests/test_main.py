@@ -1,6 +1,12 @@
 """Unit tests for main.py helpers."""
 import pytest
-from athenax.main import _extract_json
+from unittest.mock import MagicMock
+
+from athenax.main import (
+    _extract_json,
+    _register_schedule_job,
+    _validate_schedule_time,
+)
 
 
 class TestExtractJson:
@@ -47,3 +53,49 @@ class TestExtractJson:
     def test_trailing_text_after_array(self):
         result = _extract_json('[{"a": 1}] some trailing text')
         assert result == [{"a": 1}]
+
+
+class TestValidateScheduleTime:
+    def test_valid_midnight(self):
+        assert _validate_schedule_time("00:00") == "00:00"
+
+    def test_valid_afternoon(self):
+        assert _validate_schedule_time("09:00") == "09:00"
+
+    def test_invalid_format(self):
+        with pytest.raises(ValueError, match="HH:MM"):
+            _validate_schedule_time("9:00")
+
+    def test_invalid_hour(self):
+        with pytest.raises(ValueError, match="hour"):
+            _validate_schedule_time("24:00")
+
+
+class TestRegisterScheduleJob:
+    def test_weekly_summary(self):
+        sched = MagicMock()
+        monday = MagicMock()
+        sched.every.return_value.monday = monday
+        summary = _register_schedule_job(
+            sched, day="monday", time_utc="09:00", hours=None,
+        )
+        assert summary == "every Monday at 09:00 UTC"
+        monday.at.assert_called_once_with("09:00")
+        monday.at.return_value.do.assert_called_once()
+
+    def test_interval_summary(self):
+        sched = MagicMock()
+        every = sched.every.return_value
+        summary = _register_schedule_job(
+            sched, day=None, time_utc="09:00", hours=8,
+        )
+        assert summary == "every 8 hours"
+        sched.every.assert_called_once_with(8)
+        every.hours.do.assert_called_once()
+
+    def test_invalid_day(self):
+        sched = MagicMock()
+        with pytest.raises(ValueError, match="Invalid day"):
+            _register_schedule_job(
+                sched, day="notaday", time_utc="09:00", hours=None,
+            )

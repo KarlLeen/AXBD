@@ -1,0 +1,68 @@
+name,company,twitter_handle,confidence,notes
+Truth Network (now Predictor Network),Enterprise appchain client (prediction-market verification),@PRDCTR_IO,medium,Rebranded from Truth Network to PRDCTR/Predictor Network; legacy handle @Truth_Network_ may still redirect; API lookup unavailable
+Galactic,Consumer-product builder on Truth Network appchain,@galacticmarkets,high,Official Galactic media/prediction-markets account per galacticmarkets.io press release; API lookup unavailable
+Enigmatic Smile (Voucher Ledger),Enterprise appchain client (loyalty / cashback),@EnigmaticSmile,medium,Company account; ecosystem also uses @Vowcurrency; API lookup unavailable
+Knowd Communication FZCO,Node Seller Partner — retail distribution community (UAE / DIEZ),,none,No official public X/Twitter account found; company operates at knowd.io with LinkedIn presence only
+TECHSAFE FZCO,Node Seller Partner — retail distribution community (UAE / DMCC),,none,No official X/Twitter account found on techsafe.ac; DMCC-based node seller
+Aventus Node Holders (retail),Core owner community,@AventusNetwork,medium,No dedicated retail-holder account; using official @AventusNetwork network account
+Polkadot / Web3 Foundation,Layer-0 relay chain & ecosystem (DOT),@Polkadot,high,Official Polkadot account
+Parity Technologies,Core technology provider,@ParityTech,high,Official Parity Technologies account
+Ethereum,Settlement / anchor layer (ETH),@ethereum,high,Official Ethereum account
+Moonbeam (GLMR),EVM smart-contract platform,@MoonbeamNetwork,high,Official Moonbeam Network account
+Astar (ASTR),Multi-VM smart contracts / dApp hub,@AstarNetwork,high,Official Astar Network account
+Acala (ACA),DeFi hub / stablecoin (aUSD),@AcalaNetwork,high,Official Acala Network account
+Hydration / HydraDX (HDX),DeFi — omnipool liquidity / DEX,@HydraDX,high,Rebranded to Hydration; handle remains @HydraDX
+Bifrost (BNC),Liquid staking (LST) protocol,@BifrostFinance,high,Official Bifrost Finance account
+Centrifuge (CFG),Real-world asset (RWA) tokenisation,@centrifuge,high,Official Centrifuge account
+Phala Network (PHA),Privacy / AI compute / DePIN coprocessor,@PhalaNetwork,high,Official Phala Network account
+Unique Network (UNQ),NFT infrastructure,@Unique_NFTchain,high,Official Unique Network account
+Mythos (MYTH),Gaming ecosystem,@EnterTheMythos,high,Official Mythos gaming account
+Energy Web X (EWT),Energy DePIN  (also a historical Aventus partner — see §5),@energywebx,high,Official Energy Web X account
+Frequency (FRQCY),Decentralised social (DSNP),@onefrequency,high,Official Frequency (DSNP) account
+Interlay (INTR),Bitcoin DeFi / iBTC bridge,@interlayHQ,high,Official Interlay account
+Manta (MANTA),Privacy / ZK infrastructure,@MantaNetwork,high,Official Manta Network account
+KILT Protocol (KILT),Decentralised identity / credentials,@Kiltprotocol,high,Official KILT Protocol account
+Nodle (NODL),IoT / smartphone DePIN network,@NodleNetwork,high,Official Nodle Network account
+Parallel Finance (PARA),DeFi lending / staking,@ParallelFi,high,Official Parallel Finance account
+Composable (LAYR),Cross-chain interoperability,@ComposableFin,high,Official Composable Finance account
+Integritee (TEER),Confidential compute / TEE,@IntegriteeHQ,high,Official Integritee account
+Darwinia (RING),Cross-chain messaging / bridge,@DarwiniaNetwork,high,Official Darwinia Network account
+Crust Network (CRU),Decentralised storage,@CrustNetwork,high,Official Crust Network account
+Zeitgeist (ZTG),Prediction markets (synergy w/ Truth Network),@ZeitgeistPM,high,Official Zeitgeist account
+Polkadex (PDEX),Order-book DEX,@Polkadex,high,Official Polkadex account
+Ajuna Network (AJUN),Gaming / Unity-Unreal SDK,@AjunaNetwork,high,Official Ajuna Network account
+NeuroWeb (NEURO),AI / decentralised knowledge graph,@NeuroWebAI,high,Official NeuroWeb account
+Pendulum (PEN),Fiat / forex DeFi,@Pendulum_chain,high,Official Pendulum chain account
+peaq (PEAQ),DePIN / machine economy,@peaqnetwork,high,Official peaq network account
+InvArch (VARCH),IP & multi-sig / DAO infrastructure,@InvArchNetwork,high,Official InvArch account
+Litentry (LIT),Decentralised identity aggregation,@litentry,high,Official Litentry account
+Polimec (PLMC),On-chain fundraising / launchpad,@PolimecProtocol,high,Official Polimec account
+Robonomics (XRT),IoT / robotics DePIN,@AIRA_Robonomics,high,Official Robonomics account
+Logion (LGNT),Legal / RWA notarisation,@LogionNetwork,medium,Likely official Logion account; verify parachain status
+Equilibrium (EQ),DeFi money market,@EquilibriumDeFi,medium,Likely official Equilibrium account; parachain status uncertain
+Truth Network appchain (TRUU),L3 appchain + token community,@PRDCTR_IO,medium,Same ecosystem as PRDCTR/Predictor Network (TRUU→PRD migration)
+Voucher Ledger appchain,L3 appchain (loyalty / payments),@EnigmaticSmile,medium,Operated by Enigmatic Smile; related token ecosystem at @Vowcurrency
+Vodafone (DAB platform),Enterprise / telecom,@Vodafone,high,Official Vodafone corporate account
+Heathrow Airport — Airport Perishable Handling (APH),Enterprise / aviation logistics,@HeathrowAirport,high,Official Heathrow Airport passenger account (APH is Heathrow facility)
+Energy Web,Enterprise / energy,@energywebx,high,Energy Web / Energy Web X official account
+VOW / vCurrency (Cashbackapp),Loyalty / cashback (two-token model),@vowcurrency,medium,VOW / vCurrency project account
+Fruitlab (PIP token),Gaming / play-to-earn social network,@FruitlabOfficial,low,Historical project; account may be inactive
+Live Nation France (via FanDragon / TixTo.Me),Live events / ticketing,@LiveNationFR,medium,Official Live Nation France account; historical FanDragon partnership
+FanDragon Technologies,Ticketing technology partner,@FanDragonTech,low,Historical ticketing partner; limited recent activity
+Artos Systems,Relayer / fiat-to-blockchain bridge partner,@ArtosSystems,low,Historical partner; account may be inactive
+Beatport,Music / DJ platform,@beatport,high,Official Beatport account
+NFL Alumni,Sports membership organisation,@NFLAlumni,high,Official NFL Alumni account
+Parity Sports (paritynow),Sports / NFT (female athletes),@paritynow,high,Handle explicitly referenced in Excel entry name
+Wolf of Wall Street Film Studio,Film / entertainment IP,@WolfofWallStNFT,medium,Aventus NFT experience account for the film IP (2023 partnership)
+Symbiotix,Healthcare / medical-data NFTs,,none,No official X/Twitter found; company operates at sbxhealth.com (Symbiotix Health)
+ASX Sports,Sports-tech application,@asx_sports,medium,Fantasy sports 'stocks for sports' platform; historical Aventus blockchain partner
+Imperial College London,Academic / collator,@imperialcollege,high,Official Imperial College London account
+CoinShares,Digital-asset investment / collator,@CoinSharesCo,high,Official CoinShares account
+Scytale Ventures / Scytale Digital,VC / collator (co-designer of Aventus 2.0),@scytaledigital,high,Official Scytale Digital account (formerly Scytale Ventures)
+GABI Ventures,VC / collator,,none,No official X/Twitter found; fully deployed fund related to CoinShares/Global Advisors
+Sports Illustrated,"Global brand audiences (media, payments, energy, loyalty)",@SInow,high,Official Sports Illustrated account
+Time Magazine,"Global brand audiences (media, payments, energy, loyalty)",@TIME,high,Official TIME account
+PayPal,"Global brand audiences (media, payments, energy, loyalty)",@PayPal,high,Official PayPal account
+Shell,"Global brand audiences (media, payments, energy, loyalty)",@Shell,high,Official Shell account
+EDF,"Global brand audiences (media, payments, energy, loyalty)",@EDFofficiel,medium,EDF official account (French energy company)
+Loyalty Key,"Global brand audiences (media, payments, energy, loyalty)",,none,No official X/Twitter found; Danish loyalty company at loyaltykey.com (LinkedIn only)

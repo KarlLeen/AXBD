@@ -1,0 +1,20 @@
+{
+  "running": false,
+  "pid": null,
+  "started_at": null,
+  "updated_at": "2026-07-21T07:16:29.199841+00:00",
+  "finished_at": null,
+  "input": "/Users/karl4chill/dev/axbd/data/athenax_listing_w6.xlsx",
+  "output": "/Users/karl4chill/dev/axbd/data/athenax_listing_w6_enriched.xlsx",
+  "sheet": "Week 6 (Huge list)",
+  "total": 321,
+  "done": 0,
+  "skipped": 0,
+  "failed": 0,
+  "current_index": 0,
+  "current_name": null,
+  "current_row": null,
+  "last_status": "idle",
+  "last_error": null,
+  "recent": []
+}

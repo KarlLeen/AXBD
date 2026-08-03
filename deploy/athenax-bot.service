@@ -9,6 +9,7 @@ User=athenax
 WorkingDirectory=/opt/athenax
 EnvironmentFile=/opt/athenax/.env
 Environment=HOME=/opt/athenax
+Environment=UV_CACHE_DIR=/opt/athenax/.cache/uv
 ExecStart=/opt/athenax/.venv/bin/athenax bot
 Restart=on-failure
 RestartSec=10
